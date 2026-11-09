@@ -1,4 +1,4 @@
-"""Tests for the generic bring-your-own-source adapter (v0.3).
+"""Tests for the generic bring-your-own-source generic adapter.
 
 The demo source 'demo-prices' is engineered so that EVERY generic rule fires
 on a known entity, and 'demo-ranks' proves the CSV path + entity-column
@@ -674,7 +674,7 @@ class TestEntityResolution(unittest.TestCase):
 
 
 class TestReviewerP0Regressions(unittest.TestCase):
-    """Every test here reproduces a P0/P1 filed by the v0.4.0 review round.
+    """Every test here reproduces a P0/P1 filed by an external review round.
 
     Codex / Qoder / MiniMax all rejected 93ba276; these are the reproducible
     ones. A fix without a regression test is a fix that comes back.
@@ -1193,6 +1193,65 @@ class TestPublicReviewP1(unittest.TestCase):
         r = generic.search_records(con, "m", filters=[{"field": "v", "op": ">", "value": "3"}])
         self.assertIn("error", r)
         self.assertIn("both numbers and text", r["error"])
+        con.close()
+
+
+class TestPublicReviewP1Codex(unittest.TestCase):
+    """Codex's two reproduced defects: an identity boundary hidden inside a gap,
+    and a capture batch that produced no facts vanishing from the timeline."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp(prefix="ibe-cx-")
+
+    def _mk(self, name, files, cfg=None):
+        d = os.path.join(self.tmp, name)
+        os.makedirs(d)
+        for k, body in files.items():
+            with open(os.path.join(d, k + "-x.csv"), "w", encoding="utf-8", newline="\n") as f:
+                f.write(body.strip() + "\n")
+        if cfg:
+            with open(os.path.join(d, "source.json"), "w", encoding="utf-8") as f:
+                json.dump(cfg, f)
+        return d
+
+    def _con(self, name):
+        con = store.connect(os.path.join(self.tmp, name + ".db"))
+        store.init_db(con)
+        return con
+
+    def test_boundary_inside_a_gap_suppresses_swing(self):
+        """day1 ALPHA/10 -> day2 ZULU/absent -> day3 ZULU/900 reported +8900%."""
+        con = self._con("gapb")
+        d = self._mk("gapb", {
+            "2099-01-01": "id,owner,price\na,ALPHA,10",
+            "2099-01-02": "id,owner,price\na,ZULU,",
+            "2099-01-03": "id,owner,price\na,ZULU,900",
+        }, {"entity_column": "id", "identity_fields": ["owner"]})
+        generic.import_path(con, "gapb", d, verbose=False)
+        generic.detect_generic(con, "gapb", verbose=False)
+        kinds = [r[0] for r in con.execute("SELECT kind FROM anomalies")]
+        self.assertTrue(any(k.startswith("identity_change") for k in kinds))
+        self.assertFalse(any(k.startswith("value_swing") for k in kinds),
+                         "no growth rate may be computed across a boundary hidden in a gap")
+        con.close()
+
+    def test_zero_fact_batch_stays_on_timeline(self):
+        """A capture that imported nothing must not be hidden by the previous one."""
+        con = self._con("zero")
+        d = self._mk("zero", {
+            "2099-02-01": "id,price\na,10",
+            "2099-02-02": "id,price\na,",
+        })
+        generic.import_path(con, "zero", d, verbose=False)
+        dates = generic._source_dates(con, "zero")
+        self.assertEqual(dates, ["2099-02-01", "2099-02-02"])
+        cov = generic.field_coverage(con, "zero")
+        self.assertEqual(cov["latest"], "2099-02-02")
+        self.assertTrue(cov["latest_capture_empty"])
+        self.assertEqual(cov["coverage_anchor_date"], "2099-02-01")
+        price = [f for f in cov["fields"] if f["field"] == "price"][0]
+        self.assertEqual(price["status"], "no_facts_in_latest_capture")
         con.close()
 
 if __name__ == "__main__":

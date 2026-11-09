@@ -2,7 +2,7 @@
 """Precision audit for the GENERIC detection rules (discipline 9).
 
 The generic rules added in
-v0.3.6-v0.4.0 had only unit tests, which prove "the case that should fire does
+The generic rules originally had only unit tests, which prove "the case that should fire does
 fire" but say nothing about how often they fire when they should not. This script
 closes that gap with a fixed, labelled synthetic corpus: every scenario declares
 which kinds MUST appear and which MUST NOT, and the runner scores each rule.

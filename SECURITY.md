@@ -1,19 +1,24 @@
-# SECURITY
+# Security
 
-## 报告漏洞
+## Reporting a vulnerability
 
-请**私密**报告安全问题，不要开公开 issue。
+Please **do not** open a public issue for a security problem.
 
-- 渠道：仓库维护者的私密联系渠道（公开推送前在 README 与本文件填入实际联系方式——发布检查单项）
-- 内容：复现步骤、影响范围（解析器 / 存储 / MCP 协议层）、是否涉及数据泄漏
-- 响应目标：72 小时内确认，修复后随下一个补丁版本发布并在 CHANGELOG 致谢
+Email the maintainer at the address in the repository's git commit metadata, with
+the word SECURITY in the subject. If that address is unavailable, open a public
+issue that says only "security report — need a private channel" without details.
 
-## 安全边界说明
+You can expect an acknowledgement within a few days. This is a small project with
+no bug bounty; the goal is a quiet fix and credit if you want it.
 
-- 本项目**不含网络抓取代码**；MCP 服务器只读本地 SQLite，stdio 传输，不监听端口。
-- 解析器处理的是不可信的第三方文本（抓取归档）：全部输入按敌意数据处理（正则灾难性回溯、超长行、编码异常均在测试范围）。发现可复现的 DoS 向量请按上述渠道报告。
-- 数据库文件可能含敏感商业数据：`data/` 已 gitignore，请勿将 evidence.db 提交或分发。
+## What this software does with your data
 
-## 支持版本
+- It reads the CSV/JSON/JSONL exports you point it at and writes a local SQLite
+  database. Nothing is uploaded anywhere.
+- The MCP server speaks stdio; it opens no network sockets.
+- `data/` and `*.db` are gitignored — a database you create never lands in a
+  commit unless you force it.
 
-仅最新版本（见 CHANGELOG.md）。旧版本不回填安全补丁。
+## Supported versions
+
+Only the newest release is supported. This repository starts at 0.5.0.

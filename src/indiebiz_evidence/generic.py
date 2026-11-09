@@ -456,6 +456,19 @@ def _stored_config(con, source):
     return cfg
 
 
+def _crosses_boundary(d0, d1, boundaries):
+    """True when an identity boundary sits anywhere in (d0, d1].
+
+    Checking only the second date missed the case where the entity was absent on
+    the boundary day: d1 (ALPHA, price 10) -> d2 (ZULU, price absent) -> d3 (ZULU,
+    price 900) reported +8900% because the pair under comparison was (d1, d3) and
+    the boundary at d2 was never consulted.
+    """
+    if not boundaries:
+        return False
+    return any(d0 < b <= d1 for b in boundaries)
+
+
 def detect_generic(con, source, config=None, verbose=True):
     """Run the five generic rules over one source's facts."""
     _check_namespace(source)
@@ -544,7 +557,7 @@ def detect_generic(con, source, config=None, verbose=True):
                          % (fld, t1, lag, stale_h))
             is_swing = (fld in set(swing_fields)) if swing_fields else (
                 fld not in mono and fld not in ident and fld not in tstamp)
-            if d1 in bset:
+            if _crosses_boundary(d0, d1, bset):
                 is_swing = False  # cross-boundary changes are meaningless, not signals
             if is_swing and n0 is not None and n1 is not None and n0 != 0:
                 ch = (n1 - n0) / abs(n0)
@@ -567,7 +580,7 @@ def detect_generic(con, source, config=None, verbose=True):
             continue
         bset = boundaries.get(ent, set())
         for (d0, n0, t0), (d1, n1, t1) in zip(series, series[1:]):
-            if d1 in bset:
+            if _crosses_boundary(d0, d1, bset):
                 continue  # a different entity after the boundary; not a change
             if t0 is None or t1 is None or t0 == t1:
                 continue
@@ -837,9 +850,21 @@ def _cadence(dates, cfg_gap=None):
 
 
 def _source_dates(con, source):
-    return [r[0] for r in con.execute(
-        "SELECT DISTINCT observed_date FROM generic_facts WHERE source=? ORDER BY observed_date",
-        (source,))]
+    """Capture dates for a source, including batches that yielded no facts.
+
+    Reading the timeline from generic_facts alone hides a failed capture: if day 2
+    imported zero rows, coverage reported day 1 as latest with 100% coverage and
+    the failure disappeared.
+    """
+    facts = {r[0] for r in con.execute(
+        "SELECT DISTINCT observed_date FROM generic_facts WHERE source=?", (source,))}
+    # ingest batches that ran (status ok) even if every value was null/absent
+    cur = con.execute(
+        "SELECT DISTINCT observed_date FROM ingest_files WHERE status=? "
+        "AND path LIKE ? ESCAPE '\\'",
+        ("ok", "%" + _like_escape(source) + "%"))
+    batches = {r[0] for r in cur if r[0]}
+    return sorted(facts | batches)
 
 
 def field_coverage(con, source, max_gap_days=None):
@@ -856,12 +881,20 @@ def field_coverage(con, source, max_gap_days=None):
     if not dates:
         return None
     latest = dates[-1]
+    fact_dates = [r[0] for r in con.execute(
+        "SELECT DISTINCT observed_date FROM generic_facts WHERE source=? ORDER BY observed_date",
+        (source,))]
+    # A batch that imported zero usable facts leaves latest without an entity set.
+    # Fall back to the last date that has facts so coverage does not report 100%
+    # on a capture that failed, and say so explicitly.
+    latest_capture_empty = (latest not in fact_dates)
+    anchor = fact_dates[-1] if fact_dates else latest
     total_days = len(dates)
 
     # entities that have any fact on the latest date (the live population)
     live = [r[0] for r in con.execute(
         "SELECT DISTINCT entity FROM generic_facts WHERE source=? AND observed_date=?",
-        (source, latest))]
+        (source, anchor))]
 
     rows = con.execute("""
         SELECT field,
@@ -965,7 +998,15 @@ def field_coverage(con, source, max_gap_days=None):
                  "from (or no max_gap_days configured): we do not know whether they "
                  "are late, so nothing is claimed either way."),
     }
+    if latest_capture_empty:
+        for f in out:
+            f["status"] = "no_facts_in_latest_capture"
+            f["verdict"] = ("the newest capture (%s) imported no usable facts at all -- "
+                            "this is a capture failure, not an absent field. Coverage "
+                            "below is measured on %s." % (latest, anchor))
     return {"source": source, "dates": total_days, "latest": latest,
+            "latest_capture_empty": latest_capture_empty,
+            "coverage_anchor_date": anchor,
             "entities_latest": len(live), "fields": out,
             "cadence": cadence,
             "schema_events": {"fields_added_after_first_capture": added,

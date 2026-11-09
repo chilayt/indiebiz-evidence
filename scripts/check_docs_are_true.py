@@ -192,6 +192,11 @@ def _count_tools():
 
 
 
+CN_NUM = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7,
+          "八": 8, "九": 9, "十": 10, "十一": 11, "十二": 12, "十三": 13, "十四": 14,
+          "十五": 15, "十六": 16}
+
+
 def check_numbers():
     problems = []
     readme = open(os.path.join(ROOT, "README.md"), encoding="utf-8").read()
@@ -205,13 +210,20 @@ def check_numbers():
         problems_early = ["CHANGELOG has no version section -- cannot verify the test count"]
     declared = re.findall(r"测试\s*\**\s*(\d+)\s*\**\s*(?:→|->)\s*\**\s*(\d+)", head)
     tests = _count_tests()
-    if declared and declared[0][1] != str(tests):
+    if not declared:
+        problems.append("CHANGELOG newest section states no test count -- cannot verify it")
+    elif declared[0][1] != str(tests):
         problems.append("CHANGELOG says %s tests, repository has %d" % (declared[0][1], tests))
     tools = _count_tools()
-    m_tools = re.search(r"\*\*(\d+) 个工具\*\*|### (\d+) ?个工具", readme)
-    expected_tools = None
-    if m_tools:
-        expected_tools = int(m_tools.group(1) or m_tools.group(2))
+    m_tools = re.search(r"\*\*(\d+) 个工具\*\*", readme)
+    expected_tools = int(m_tools.group(1)) if m_tools else None
+    if expected_tools is None:
+        m_cn = re.search(r"([一二三四五六七八九十]+)个 MCP 工具", readme)
+        if m_cn:
+            expected_tools = CN_NUM.get(m_cn.group(1))
+    if expected_tools is None:
+        problems.append("cannot find a tool-count claim in README -- the check would "
+                        "silently pass, so it is reported instead")
     if expected_tools is not None and expected_tools != tools:
         problems.append("README says %d tools, mcp_server has %d" % (expected_tools, tools))
     if tools == 0:

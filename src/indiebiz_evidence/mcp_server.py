@@ -436,7 +436,11 @@ def _call_tool(con, params):
         payload = fn(con, args)
         text = payload if isinstance(payload, str) else json.dumps(
             _finite(payload), ensure_ascii=False, indent=1, default=str)
-        return {"content": [{"type": "text", "text": text}], "isError": False}
+        # A payload that carries "error" is a failed call, not a success with a
+        # message: hosts branch on isError, and returning false there let an agent
+        # treat "source is required" as data.
+        is_err = isinstance(payload, dict) and "error" in payload
+        return {"content": [{"type": "text", "text": text}], "isError": bool(is_err)}
     except Exception as e:
         return {"content": [{"type": "text", "text": "Tool error: %s: %s" % (type(e).__name__, e)}],
                 "isError": True}
