@@ -640,7 +640,7 @@ class TestEntityResolution(unittest.TestCase):
         g = d["groups"][0]
         self.assertEqual(g["normalized"], "acmewidget")
         self.assertEqual([e["entity"] for e in g["entities"]], ["Acme Widget", "acme_widget"])
-        self.assertEqual(g["overlapping_dates"], 2)
+        self.assertEqual(g["same_day_overlap_days"], 2)
         self.assertEqual(g["overlap_kind"], "same_day")
 
     def test_no_duplicates_when_ids_are_distinct(self):
@@ -1029,7 +1029,7 @@ class TestSecondReviewRegressions(unittest.TestCase):
         self.assertTrue(groups)
         g = groups[0]
         self.assertEqual(g["overlap_kind"], "same_day")
-        self.assertGreaterEqual(g["max_same_day_overlap"], 1)
+        self.assertGreaterEqual(g["same_day_overlap_days"], 1)
         con.close()
 
     # ---- P2-10: long changes must stay distinguishable ---------------------
@@ -1105,6 +1105,94 @@ class TestOverlapScopeHonesty(unittest.TestCase):
         generic.import_path(con, "s", d, verbose=False)
         groups = generic.find_duplicate_entities(con, "s")
         self.assertEqual(groups["candidate_groups"], 0)   # a/b do not normalise together
+        con.close()
+
+
+class TestPublicReviewP1(unittest.TestCase):
+    """MiniMax's public-repo review: six ways the output layer answered
+    confidently and wrongly. Each one has a reproduction here."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp(prefix="ibe-pub-")
+        d = os.path.join(cls.tmp, "p")
+        os.makedirs(d)
+        days = {
+            "2099-03-01": "id,price,note\na,10,hello\nb,31,x",
+            "2099-03-02": "id,price,note\na,11,hello\nb,99,x",
+            "2099-03-12": "id,price,note\na,12,hello\nb,100,x",
+        }
+        for k, body in days.items():
+            with open(os.path.join(d, k + "-p.csv"), "w", encoding="utf-8", newline="\n") as f:
+                f.write(body + "\n")
+        cls.db = os.path.join(cls.tmp, "p.db")
+        con = store.connect(cls.db)
+        store.init_db(con)
+        generic.import_path(con, "p", d, verbose=False)
+        generic.detect_generic(con, "p", verbose=False)
+        cls.con = con
+
+    @classmethod
+    def tearDownClass(cls):
+        try:
+            cls.con.close()
+        except Exception:
+            pass
+
+    # P1-1 unknown operator
+    def test_unknown_op_errors_instead_of_returning_everything(self):
+        r = generic.search_records(self.con, "p", date="2099-03-01",
+                                   filters=[{"field": "price", "op": "gt", "value": 5}])
+        self.assertIn("error", r)
+        self.assertIn("unknown filter op", r["error"])
+
+    # P1-2 missing value
+    def test_missing_filter_value_errors(self):
+        for op in ("!=", ">="):
+            r = generic.search_records(self.con, "p", date="2099-03-01",
+                                       filters=[{"field": "price", "op": op}])
+            self.assertIn("error", r, op)
+            self.assertIn("missing 'value'", r["error"])
+
+    # P1-6 unknown capture date
+    def test_search_on_uncaptured_date_errors(self):
+        r = generic.search_records(self.con, "p", date="2099-02-01")
+        self.assertIn("error", r)
+        self.assertIn("not a capture date", r["error"])
+        self.assertIn("known_dates", r)
+
+    # P1-5 non-finite numbers must never reach the payload
+    def test_infinity_is_refused_at_import(self):
+        self.assertIsNone(generic._to_num("inf"))
+        self.assertIsNone(generic._to_num("-infinity"))
+        self.assertIsNone(generic._to_num("1e999"))
+        self.assertIsNone(generic._to_num("nan"))
+        self.assertEqual(generic._to_num("12,345"), 12345.0)
+
+    # P2-8 mixed numbers/text must not sort by string
+    def test_mixed_sort_keeps_numbers_numeric(self):
+        r = generic.search_records(self.con, "p", date="2099-03-01",
+                                   sort="note", desc=True)
+        values = [x["fields"].get("note", {}) for x in r["records"]]
+        # text values only here; the point is that it must not crash nor reorder
+        self.assertTrue(all(v.get("text") for v in values if v))
+        r2 = generic.search_records(self.con, "p", date="2099-03-01",
+                                    sort="price", desc=True)
+        nums = [x["fields"]["price"]["num"] for x in r2["records"]]
+        self.assertEqual(nums, sorted(nums, reverse=True))
+
+    # P2-7 mixed-type field is refused rather than silently skipped
+    def test_mixed_type_field_is_refused(self):
+        d = os.path.join(self.tmp, "mix")
+        os.makedirs(d)
+        with open(os.path.join(d, "2099-04-01-m.csv"), "w", encoding="utf-8", newline="\n") as f:
+            f.write("id,v\na,10\nb,hello\n")
+        con = store.connect(os.path.join(self.tmp, "m.db"))
+        store.init_db(con)
+        generic.import_path(con, "m", d, verbose=False)
+        r = generic.search_records(con, "m", filters=[{"field": "v", "op": ">", "value": "3"}])
+        self.assertIn("error", r)
+        self.assertIn("both numbers and text", r["error"])
         con.close()
 
 if __name__ == "__main__":

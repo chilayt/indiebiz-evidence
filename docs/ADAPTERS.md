@@ -25,7 +25,7 @@ python scripts/run_import.py --source my-prices --input exports/my-prices
 #                     / diff_snapshots
 #
 # 建议第一次导入后先跑 audit_field_coverage：
-#   它会逐字段报覆盖率，并在"以前抓得到、最新一天没有"时给出 silent_drop，
+#   它会逐字段报覆盖率，并在"以前抓得到、最新一天没有"时给出 absent_on_latest，
 #   这通常是你的抓取器/解析器少输出了字段，而不是上游没了这个数据。
 # 异常命名空间：<source>:<entity>（如 my-prices:widget-a）
 ```
@@ -74,7 +74,7 @@ python scripts/run_import.py --source my-prices --input exports/my-prices
 | 其余数值字段（或显式 `swing_fields`） | `value_swing:<field>`（≥ swing_threshold） | info |
 | **所有字段**（无需声明） | `field_disappeared:<field>`：连续 ≥ min_presence_days 次出现后突然缺席 | warn |
 
-> `field_disappeared` 是本项目最重要的一条通用规则——它就是“GSC 字段消失 13 天”事故的制度化防线：**字段缺席时先怀疑源和解析器，再下“被移除”的结论**（证据链：docs/incidents/08）。
+> `field_disappeared` 是本项目最重要的一条通用规则——它就是“GSC 字段消失 13 天”事故的制度化防线：**字段缺席时先怀疑源和解析器，再下“被移除”的结论**（证据链：私有事故档案）。
 >
 > `min_presence_days` 按**该实体的连续捕获次数**计（非自然日）。默认 3 次适合日更源；周更源建议 2；**demo 配置里的 1 仅为让两天夹具能触发，不是推荐值**。
 
@@ -236,7 +236,7 @@ CSV 三列即可：`product,price,observed_date`；source.json 声明 `identity_
 
 | 工具 | 回答什么 |
 |---|---|
-| `list_entities` | 这个源里我到底在跟踪哪些实体（首末次出现、出现天数、事实条数，轻量分页） |
+| `list_entities` | 这个源里我到底在跟踪哪些实体（首末次出现、出现的抓取日数、事实条数，轻量分页） |
 | `find_duplicate_entities` | **源内**哪些实体折叠后是同一个键（`Acme Widget` 与 `acme_widget`） |
 | `resolve_entities` | 拿一个名字，去**所有源**里找它的各种写法 |
 

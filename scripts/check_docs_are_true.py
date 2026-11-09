@@ -197,7 +197,12 @@ def check_numbers():
     readme = open(os.path.join(ROOT, "README.md"), encoding="utf-8").read()
     with open(os.path.join(ROOT, "CHANGELOG.md"), encoding="utf-8") as f:
         changelog = f.read()
-    head = changelog.split("## v0.4.2", 1)[-1].split("\n## ", 1)[0]
+    # take the newest version section without hard-coding its number: a renamed
+    # heading used to make this check silently do nothing
+    parts = re.split(r"\n## ", changelog)
+    head = parts[1] if len(parts) > 1 else ""
+    if not head:
+        problems_early = ["CHANGELOG has no version section -- cannot verify the test count"]
     declared = re.findall(r"测试\s*\**\s*(\d+)\s*\**\s*(?:→|->)\s*\**\s*(\d+)", head)
     tests = _count_tests()
     if declared and declared[0][1] != str(tests):
@@ -215,7 +220,17 @@ def check_numbers():
     return problems
 
 
+def _utf8_stdio():
+    """A GBK console must not crash a tool that prints Chinese."""
+    for s in (sys.stdout, sys.stderr):
+        try:
+            s.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+
 def main():
+    _utf8_stdio()
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--update", action="store_true",

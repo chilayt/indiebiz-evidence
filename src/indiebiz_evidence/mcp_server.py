@@ -50,7 +50,7 @@ TOOL_SCHEMAS = [
         "title": "Is my collection still healthy?",
         "description": "Per-field presence audit: coverage %, present/absent days, "
                        "first/last seen, blank rows, a machine-readable status "
-                       "(ok / partial_drop / absent_on_latest / silent_drop) and a "
+                       "(ok / partial_drop / absent_on_latest / absent_on_latest) and a "
                        "schema_events summary. Run this BEFORE interpreting any trend.",
         "inputSchema": {
             "type": "object",
@@ -135,7 +135,8 @@ TOOL_SCHEMAS = [
     {
         "name": "list_entities",
         "title": "Inventory a source",
-        "description": "Paginated entity inventory: first/last seen, days present, fact count.",
+        "description": "Paginated entity inventory: first/last seen, CAPTURE-DAYS present "
+                       "(not calendar days), fact count.",
         "inputSchema": {
             "type": "object",
             "properties": {"source": dict(_S), "limit": dict(_I), "offset": dict(_I)},
@@ -305,7 +306,7 @@ def tool_diff_snapshots(con, args):
                 "known_sources": [s["source"] for s in G.list_sources(con)]}
     res["anomalies_in_range"] = _rows(
         con, "SELECT observed_date, slug, kind, severity, detail FROM anomalies "
-             "WHERE substr(slug,1,?)=? AND observed_date IN (?, ?) "
+             "WHERE substr(slug,1,?)=? AND observed_date BETWEEN ? AND ? "
              "ORDER BY observed_date, kind",
         (len(src + ":"), src + ":", res.get("from") or "", res.get("to") or ""))
     return res
@@ -365,10 +366,16 @@ def tool_list_source_anomalies(con, args):
         params.extend([len(args["source"] + ":"), args["source"] + ":"])
     where = (" WHERE " + " AND ".join(conds)) if conds else ""
     limit = min(max(int(args.get("limit") or 100), 1), 1000)
+    total = _rows(con, "SELECT COUNT(*) AS n FROM anomalies" + where, tuple(params))[0]["n"]
     rows = _rows(con, "SELECT observed_date, slug, kind, severity, detail FROM anomalies"
                       + where + " ORDER BY observed_date DESC, kind LIMIT ?",
                   tuple(params) + (limit,))
-    return {"count": len(rows), "anomalies": rows}
+    # count must be the TOTAL that matched, not the page size: this tool exists so
+    # an agent checks anomalies before reading a trend, and a truncated list that
+    # calls itself "count" makes it believe there is nothing else to see.
+    return {"count": total, "returned": len(rows), "limit": limit,
+            "has_more": total > len(rows), "truncated": total > len(rows),
+            "anomalies": rows}
 
 
 TOOL_FUNCS = {
@@ -401,6 +408,24 @@ def _send(obj):
     sys.stdout.flush()
 
 
+def _finite(value):
+    """Replace non-finite floats so the payload is always valid JSON.
+
+    Parsing refuses inf/NaN now, but a database written by an older version can
+    still hold them, and one Infinity would make the client fail to parse the
+    entire response.
+    """
+    if isinstance(value, float):
+        if value != value or value in (float("inf"), float("-inf")):
+            return None
+        return value
+    if isinstance(value, dict):
+        return {k: _finite(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_finite(v) for v in value]
+    return value
+
+
 def _call_tool(con, params):
     name = params.get("name")
     args = params.get("arguments") or {}
@@ -409,7 +434,8 @@ def _call_tool(con, params):
         return {"content": [{"type": "text", "text": "Unknown tool: %s" % name}], "isError": True}
     try:
         payload = fn(con, args)
-        text = payload if isinstance(payload, str) else json.dumps(payload, ensure_ascii=False, indent=1, default=str)
+        text = payload if isinstance(payload, str) else json.dumps(
+            _finite(payload), ensure_ascii=False, indent=1, default=str)
         return {"content": [{"type": "text", "text": text}], "isError": False}
     except Exception as e:
         return {"content": [{"type": "text", "text": "Tool error: %s: %s" % (type(e).__name__, e)}],

@@ -26,7 +26,17 @@ def _resolve(p: str) -> str:
     return p if os.path.isabs(p) else os.path.normpath(os.path.join(PROJECT_ROOT, p))
 
 
+def _utf8_stdio():
+    """A GBK console must not crash a tool that prints Chinese."""
+    for s in (sys.stdout, sys.stderr):
+        try:
+            s.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+
 def main():
+    _utf8_stdio()
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--source", required=True, help="source name (namespace for entities/anomalies)")

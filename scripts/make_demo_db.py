@@ -14,7 +14,17 @@ sys.path.insert(0, os.path.join(PROJECT_ROOT, "src"))
 from indiebiz_evidence import demo  # noqa: E402
 
 
+def _utf8_stdio():
+    """A GBK console must not crash a tool that prints Chinese."""
+    for s in (sys.stdout, sys.stderr):
+        try:
+            s.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+
 def main():
+    _utf8_stdio()
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--db", default=os.path.join(PROJECT_ROOT, "data", "demo.db"))
     args = ap.parse_args()

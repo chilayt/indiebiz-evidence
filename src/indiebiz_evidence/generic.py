@@ -163,9 +163,15 @@ def _to_num(v):
             return None
         t = t.replace(",", "")
     try:
-        return float(t)
+        v = float(t)
     except ValueError:
         return None
+    # 'inf' / '1e999' parse to infinity. That is not a measurement, and
+    # json.dumps renders it as the literal Infinity, which is invalid JSON and
+    # makes the client fail to parse the entire payload rather than one field.
+    if v != v or v in (float("inf"), float("-inf")):
+        return None
+    return v
 
 
 def _is_null_marker(v, markers):
@@ -983,6 +989,14 @@ def search_records(con, source, date=None, q=None, filters=None, sort=None,
     if not dates:
         return None
     date = date or dates[-1]
+    # A date the source was never captured on is NOT an empty snapshot. Returning
+    # zero rows plus a hint about field coverage would send the agent looking for
+    # a capture problem that does not exist.
+    if date not in dates:
+        return {"source": source, "date": date, "total_matched": 0,
+                "error": "%r is not a capture date of this source" % (date,),
+                "known_dates": dates[-12:], "total_dates": len(dates),
+                "hint": "a missing capture is not an empty snapshot"}
     rows = con.execute(
         "SELECT entity, field, num, text, raw_ref FROM generic_facts "
         "WHERE source=? AND observed_date=?", (source, date)).fetchall()
@@ -991,6 +1005,7 @@ def search_records(con, source, date=None, q=None, filters=None, sort=None,
         rec = recs.setdefault(ent, {"entity": ent, "fields": {}, "raw_ref": raw})
         rec["fields"][fld] = {"num": num, "text": text}
 
+    _unfiltered = dict(recs) if recs else {}
     ops = {
         ">=": lambda a, b: a >= b, "<=": lambda a, b: a <= b,
         ">": lambda a, b: a > b, "<": lambda a, b: a < b,
@@ -1005,13 +1020,38 @@ def search_records(con, source, date=None, q=None, filters=None, sort=None,
             continue
         fn = ops.get(op)
         if fn is None:
-            continue
+            # Silently dropping an unrecognised operator returns EVERY row while
+            # total_matched still looks like a match count -- the exact class of
+            # confident wrong answer this engine exists to prevent.
+            return {"source": source, "date": date, "total_matched": 0,
+                    "error": "unknown filter op %r; allowed: %s"
+                             % (op, ", ".join(sorted(ops))),
+                    "filters": filters}
+        if "value" not in f:
+            return {"source": source, "date": date, "total_matched": 0,
+                    "error": "filter on %r is missing 'value'; without it '!=' matches "
+                             "every row and '>=' matches none" % (fld,),
+                    "filters": filters}
         # Coercion must follow the FIELD's stored type, not the literal's. Comparing
         # the string 'cheap' to a numeric column also makes '!=' match every row --
         # the same bug as uncoerced '30', through a narrower doorway.
-        field_is_numeric = any(
-            rec["fields"].get(fld) is not None and rec["fields"][fld].get("num") is not None
-            for rec in recs.values())
+        # Decide the field's type ONCE, from the unfiltered records at this date.
+        # Inferring it from whatever survived earlier filters made the same operator
+        # mean different things on different row subsets.
+        _all = list(recs.values()) if not filters else list(_unfiltered.values())
+        _has_num = any(r["fields"].get(fld) is not None and r["fields"][fld].get("num") is not None
+                       for r in _all)
+        _has_text = any(r["fields"].get(fld) is not None
+                        and r["fields"][fld].get("num") is None
+                        and r["fields"][fld].get("text") not in (None, "")
+                        for r in _all)
+        if _has_num and _has_text and op != "contains":
+            return {"source": source, "date": date, "total_matched": 0,
+                    "error": "field %r holds both numbers and text; comparison "
+                             "semantics would differ per row -- filter a typed field, "
+                             "or clean the import" % (fld,),
+                    "filters": filters}
+        field_is_numeric = _has_num
         if isinstance(want, str) and op != "contains":
             coerced = _to_num(want)
             if coerced is not None:
@@ -1047,22 +1087,22 @@ def search_records(con, source, date=None, q=None, filters=None, sort=None,
         # (v is None, v) combined with reverse=True floated records that do not
         # have the field at all to the top -- "highest price" returned an entity
         # with no price. Split the sentinel from the direction instead.
-        present = []
+        numbers = []
+        strings = []
         absent = []
         for rec in out:
             cell = rec["fields"].get(sort)
-            v = None
-            if cell is not None:
-                v = cell["num"] if cell["num"] is not None else cell["text"]
-            if v is None:
+            if cell is None or (cell.get("num") is None and cell.get("text") in (None, "")):
                 absent.append(rec)
+            elif cell.get("num") is not None:
+                numbers.append((cell["num"], rec))
             else:
-                present.append((v if not isinstance(v, str) else v.lower(), rec))
-        try:
-            present.sort(key=lambda pair: pair[0], reverse=bool(desc))
-        except TypeError:
-            present.sort(key=lambda pair: str(pair[0]), reverse=bool(desc))
-        out = [rec for _, rec in present] + absent
+                strings.append((str(cell["text"]).lower(), rec))
+        # Sorting a mixed column by str() put 10 before 9. Numbers sort as numbers,
+        # text sorts as text, and the two groups never interleave.
+        numbers.sort(key=lambda pair: pair[0], reverse=bool(desc))
+        strings.sort(key=lambda pair: pair[0], reverse=bool(desc))
+        out = [rec for _, rec in numbers] + [rec for _, rec in strings] + absent
     else:
         out.sort(key=lambda r: r["entity"])
     total = len(out)
@@ -1309,7 +1349,8 @@ def find_duplicate_entities(con, source, limit=50):
     groups = {}
     for ent, first, last, days in rows:
         groups.setdefault(normalize_entity(ent), []).append(
-            {"entity": ent, "first_seen": first, "last_seen": last, "days_present": days})
+            {"entity": ent, "first_seen": first, "last_seen": last,
+             "capture_days_present": days})
     out = [{"normalized": key, "entities": sorted(v, key=lambda x: x["entity"]),
             "distinct_entities": len(v),
             "overlapping_dates": None}
@@ -1330,7 +1371,7 @@ def find_duplicate_entities(con, source, limit=50):
                 best = max(best, len(dates[i] & dates[j]))
         overlap = best
         g["max_same_day_overlap"] = best
-        g["overlapping_dates"] = best
+        g["same_day_overlap_days"] = best
         # Fact only, no verdict. Same-day coexistence rules OUT a rename (a rename
         # cannot have both spellings on one capture), but it does NOT establish
         # identity: two genuinely different ids can normalize to the same key --
@@ -1358,12 +1399,13 @@ def find_duplicate_entities(con, source, limit=50):
         g["interpretation"] = (
             "at least one pair appears together on a capture date, so those two are "
             "not one-renamed-into-the-other; check each pair against its own "
-            "overlap_dates before merging (the group may mix a rename with a collision)"
+            "same_day_dates before merging (the group may mix a rename with a collision)"
             if overlap else
             "the spellings never appear on the same date: consistent with a rename, "
             "but also with one entity leaving and another arriving")
     out.sort(key=lambda g: (-(g["overlap_kind"] == "same_day"), -g["distinct_entities"]))
-    return {"source": source, "candidate_groups": len(out), "groups": out[:limit],
+    return {"source": source, "candidate_groups": len(out), "returned": len(out[:limit]),
+            "truncated": len(out) > limit, "groups": out[:limit],
             "note": ("these are CANDIDATES, not verdicts: normalization strips case "
                      "and separators, so genuinely different ids can collide. "
                      "overlapping_dates > 0 only rules out a rename (both spellings "
@@ -1392,7 +1434,8 @@ def resolve_entities(con, query, limit=20):
         else:
             continue
         matches.append({"source": source, "entity": ent, "match": kind,
-                        "first_seen": first, "last_seen": last, "days_present": days})
+                        "first_seen": first, "last_seen": last,
+                        "capture_days_present": days})
     matches.sort(key=lambda m: (m["match"] != "exact_normalized", m["source"], m["entity"]))
     counts_by_source = {}
     for m in matches:
