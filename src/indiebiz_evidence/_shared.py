@@ -37,7 +37,7 @@ def norm_name(value):
 def likely_rename(a, b):
     """True when one label is essentially contained in the other.
 
-    'Yuval - AI builder' -> 'Yuval' is a rename, not a different person. This is
+    'Acme Labs (old handle)' -> 'Acme Labs' is a rename, not a different actor. This is
     only ever a CANDIDATE: the caller reports it as info and never suppresses
     comparisons on the strength of it alone.
     """

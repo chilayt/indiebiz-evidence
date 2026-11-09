@@ -50,7 +50,7 @@ TOOL_SCHEMAS = [
         "title": "Is my collection still healthy?",
         "description": "Per-field presence audit: coverage %, present/absent days, "
                        "first/last seen, blank rows, a machine-readable status "
-                       "(ok / partial_drop / absent_on_latest / absent_on_latest) and a "
+                       "(ok / partial_drop / absent_on_latest / no_facts_in_latest_capture) and a "
                        "schema_events summary. Run this BEFORE interpreting any trend.",
         "inputSchema": {
             "type": "object",

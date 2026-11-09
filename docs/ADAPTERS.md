@@ -253,7 +253,7 @@ CSV 三列即可：`product,price,observed_date`；source.json 声明 `identity_
 ```
 find_duplicate_entities("shop")
   key=acmewidget  entities=['Acme Widget','acme_widget']
-  overlapping_dates=2  overlap_kind=same_day
+  same_day_overlap_days=2  overlap_kind=same_day
 
 resolve_entities("acme widget")
   matches: 3
@@ -266,13 +266,13 @@ resolve_entities("acme widget")
 
 1. **编辑距离会造出"看起来很确信"的错误连接**——比不连接更糟。宁可漏连，不可错连。
 2. **归一化本身就会碰撞**：`a/b` 与 `a-b` 都折叠成 `ab`，但它们可能是两个东西。
-3. 所以输出里带 **`overlapping_dates`**（两两取最大值）与 **`overlap_kind`**：
+3. 所以输出里带 **`same_day_overlap_days`**（两两取最大值）与 **`overlap_kind`**：
 
    - `same_day`：两个写法**至少有一天同时出现** → 可以**排除改名**（改名不可能同日并存），
      但仍可能是"一个东西的两行"或"真的碰撞"——**要对比字段值才能判断**；
    - `disjoint`：从未同日出现 → 与**改名**一致，也与"一个走了另一个来了"一致。
 
-   `overlapping_dates > 0` **不是**身份结论。上一版这里曾输出 `likely_same_entity=True`，
+   `same_day_overlap_days > 0` **不是**身份结论。上一版这里曾输出 `likely_same_entity=True`，
    那是一个我们无法支撑的身份判断，已删除。
 
 合并与否由人决定。工具只负责把证据摆整齐。

@@ -207,7 +207,7 @@ def check_numbers():
     parts = re.split(r"\n## ", changelog)
     head = parts[1] if len(parts) > 1 else ""
     if not head:
-        problems_early = ["CHANGELOG has no version section -- cannot verify the test count"]
+        return ["CHANGELOG has no version section -- cannot verify the stated counts"]
     declared = re.findall(r"测试\s*\**\s*(\d+)\s*\**\s*(?:→|->)\s*\**\s*(\d+)", head)
     tests = _count_tests()
     if not declared:

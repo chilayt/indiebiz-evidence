@@ -39,7 +39,7 @@
   - `diff_snapshots.anomalies_in_range` 只取两个端点日期，丢掉窗口中部（恰好是解释断档的那两条）；改为区间
   - `inf`/`1e999` 被解析成 Infinity → payload 不是合法 JSON，客户端整体解析失败；解析层拒绝非有限数，输出层再兜底
   - `search_records` 对未抓取日期返回 0 行 + 误导 hint；改为与 `diff_snapshots` 一致的显式错误
-- 同批 P2：版本号三方统一为 0.5.0（此前包自报 0.4.2）；幽灵状态 `silent_drop` 从文档与工具描述中清除；悬空的 incidents 引用移除；`days_present` 改名 `capture_days_present` 并注明"抓取日数非自然日"；重复实体输出补 `truncated`、`overlapping_dates`→`same_day_overlap_days`、每对证据键统一；混合数值/文本字段改为显式拒绝而非按字符串排序；CLI 强制 UTF-8（GBK 控制台下文档真值检查不再崩溃）
+- 同批 P2：版本号三方统一为 0.5.0（此前包自报 0.4.2）；代码并未产出的一个状态名从文档与工具描述中清除；悬空的 incidents 引用移除；`days_present` 改名 `capture_days_present` 并注明"抓取日数非自然日"；重复实体输出补 `truncated`、`overlapping_dates`→`same_day_overlap_days`、每对证据键统一；混合数值/文本字段改为显式拒绝而非按字符串排序；CLI 强制 UTF-8（GBK 控制台下文档真值检查不再崩溃）
 - 三套门禁随仓发布：单元测试 / 通用精度审计（13 场景）/ 文档真值检查
 
 ## 更早版本

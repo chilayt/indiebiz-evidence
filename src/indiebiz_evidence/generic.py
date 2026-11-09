@@ -1,4 +1,4 @@
-"""Generic bring-your-own-source adapter (v0.3.1).
+"""Generic bring-your-own-source adapter .
 
 Any pipeline that produces PERIODIC SNAPSHOTS (CSV/JSON exports, API dumps,
 scraped tables, spreadsheets) can join the same evidence store, the same
@@ -1385,7 +1385,7 @@ def list_entities(con, source, limit=100, offset=0):
     if not rows:
         return None
     items = [{"entity": e, "first_seen": f, "last_seen": l,
-              "days_present": d, "facts": n} for e, f, l, d, n in rows]
+              "capture_days_present": d, "facts": n} for e, f, l, d, n in rows]
     limit = min(max(int(limit or 100), 1), 1000)
     offset = max(int(offset or 0), 0)
     return {"source": source, "total": len(items), "offset": offset,
@@ -1411,7 +1411,7 @@ def find_duplicate_entities(con, source, limit=50):
              "capture_days_present": days})
     out = [{"normalized": key, "entities": sorted(v, key=lambda x: x["entity"]),
             "distinct_entities": len(v),
-            "overlapping_dates": None}
+            }
            for key, v in groups.items() if len(v) > 1]
     for g in out:
         dates = []
@@ -1466,7 +1466,7 @@ def find_duplicate_entities(con, source, limit=50):
             "truncated": len(out) > limit, "groups": out[:limit],
             "note": ("these are CANDIDATES, not verdicts: normalization strips case "
                      "and separators, so genuinely different ids can collide. "
-                     "overlapping_dates > 0 only rules out a rename (both spellings "
+                     "same_day_overlap_days > 0 only rules out a rename (both spellings "
                      "cannot be one thing renamed on the same day); it does not "
                      "establish identity. Compare field values before merging.")}
 
