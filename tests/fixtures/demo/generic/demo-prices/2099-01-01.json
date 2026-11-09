@@ -1,0 +1,54 @@
+[
+ {
+  "product": "widget-a",
+  "price": 10,
+  "cumulative_units": 100,
+  "owner": "Acme Co",
+  "promo_flag": "yes",
+  "updated_at": "2099-01-01T00:00:00Z"
+ },
+ {
+  "product": "widget-b",
+  "price": 50,
+  "cumulative_units": 200,
+  "owner": "Beta Ltd",
+  "promo_flag": "yes",
+  "updated_at": "2099-01-01T00:00:00Z"
+ },
+ {
+  "product": "widget-c",
+  "price": 20,
+  "cumulative_units": 300,
+  "owner": "Gamma Inc",
+  "promo_flag": "yes",
+  "updated_at": "2099-01-01T00:00:00Z"
+ },
+ {
+  "product": "widget-d",
+  "price": 15,
+  "cumulative_units": 120,
+  "owner": "Dana · CEO",
+  "updated_at": "2099-01-01T00:00:00Z"
+ },
+ {
+  "product": "widget-e",
+  "price": 25,
+  "cumulative_units": 250,
+  "owner": "OldCorp",
+  "updated_at": "2099-01-01T00:00:00Z"
+ },
+ {
+  "product": "widget-f",
+  "price": 30,
+  "cumulative_units": 310,
+  "owner": "Fiona",
+  "updated_at": "2099-01-01T00:00:00Z"
+ },
+ {
+  "product": "widget-g",
+  "price": 100,
+  "cumulative_units": 500,
+  "owner": "OldCo",
+  "updated_at": "2099-01-01T00:00:00Z"
+ }
+]

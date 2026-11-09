@@ -1,0 +1,13 @@
+# derived databases, archives and local config never ship
+data/
+*.db
+*.db-wal
+*.db-shm
+config.local.json
+.qoder-credits/
+__pycache__/
+*.pyc
+.pytest_cache/
+build/
+dist/
+*.egg-info/
