@@ -10,7 +10,17 @@
   - `generic.py` 不再从垂直模块反向取辅助函数：`sync_lag_hours` / `likely_rename` 移入本仓 `_shared.py`
   - MCP Server 重写为通用版（11 工具），协议层与错误语义保持不变
   - docs/PATTERNS.md 保留九条纪律，事故证据链移至私有仓（公开层不再引用不存在的文件）
-- 测试 0 → **95**（通用引擎 + MCP 协议端到端；干净 clone 上 0 skip）
+- 测试 0 → **99**（通用引擎 + MCP 协议端到端；干净 clone 上 0 skip）
+- **公开复审第二轮（Codex + MiniMax）修复**：
+  - `value: null` 的过滤器仍复现原缺陷（`!=` 全中、`>=` 全不中）：键存在但值为 null 现在与缺键同等对待
+  - `monotonic_regression` 分支漏了区间边界检查（`ALPHA/1000 → ZULU/缺席 → ZULU/10` 仍报回退）：已与其它规则统一
+  - **批次台账改显式**：此前用文件路径子串匹配 source，导致不同源的时间轴互相污染（shop / workshop）、
+    且失败批次仍被吞。新增 `capture_batches` 表按 (source, date) 记录每次导入（含 0 事实批次）
+  - **批次状态与字段状态分离**：`latest_batch.empty` 单列，不再覆盖字段自己的 `absent_on_latest`，
+    消除和 `schema_events` 的状态矛盾
+  - 文档数字门禁扩大覆盖面：README 的测试数/场景数、CHANGELOG 的工具数现在都校验，解析不到即失败
+  - COMPLIANCE 重写为纯发布口径（上一轮那次写入因脚本报错未落盘，本轮确认写入）；SECURITY 去掉不可用的
+    `maintainer@localhost`，改为"开只说需要私密渠道的 issue"。
 - **公开首审（Codex）两条 P1 已修**：
   - **身份边界藏在断档里**：day1 ALPHA/10 → day2 ZULU/价格缺席 → day3 ZULU/900，检测器仍报 +8900%。
     根因是只检查比较区间终点当日是否为边界，没检查区间内部。改为检查 `(d0, d1]` 全区间。

@@ -424,6 +424,15 @@ def import_path(con, source, input_path, config=None, entity_column=None, verbos
                                % (source, seen_dates[d]))
             else:
                 seen_dates[d] = path
+    # record every batch that ran, even a batch that produced zero facts
+    for d in sorted(stats["dates"]):
+        n_facts = con.execute(
+            "SELECT COUNT(*) FROM generic_facts WHERE source=? AND observed_date=?",
+            (source, d)).fetchone()[0]
+        con.execute(
+            "INSERT OR REPLACE INTO capture_batches(source, observed_date, files, facts) "
+            "VALUES (?,?,?,?)", (source, d, None, n_facts))
+
     row = con.execute(
         "SELECT COUNT(DISTINCT entity), COUNT(DISTINCT field), MIN(observed_date), MAX(observed_date)"
         " FROM generic_facts WHERE source=?", (source,)).fetchone()
@@ -535,7 +544,7 @@ def detect_generic(con, source, config=None, verbose=True):
     for (ent, fld), series in per_ef.items():
         bset = boundaries.get(ent, set())
         for (d0, n0, t0), (d1, n1, t1) in zip(series, series[1:]):
-            if (fld in mono and d1 not in bset
+            if (fld in mono and not _crosses_boundary(d0, d1, bset)
                     and n0 is not None and n1 is not None and n1 < n0 - 0.005):
                 flag(d1, ent, "monotonic_regression:" + fld, "warn",
                      "%s decreased %s -> %s (declared cumulative; list both values, never diff)"
@@ -850,20 +859,17 @@ def _cadence(dates, cfg_gap=None):
 
 
 def _source_dates(con, source):
-    """Capture dates for a source, including batches that yielded no facts.
+    """Capture dates for one source, including batches that yielded no facts.
 
-    Reading the timeline from generic_facts alone hides a failed capture: if day 2
-    imported zero rows, coverage reported day 1 as latest with 100% coverage and
-    the failure disappeared.
+    The ledger is `capture_batches`, keyed by (source, date). An earlier version
+    guessed the source from a file path with LIKE, which merged different sources
+    whose names contain one another (shop / workshop) and still missed the failure
+    it was meant to expose.
     """
     facts = {r[0] for r in con.execute(
         "SELECT DISTINCT observed_date FROM generic_facts WHERE source=?", (source,))}
-    # ingest batches that ran (status ok) even if every value was null/absent
-    cur = con.execute(
-        "SELECT DISTINCT observed_date FROM ingest_files WHERE status=? "
-        "AND path LIKE ? ESCAPE '\\'",
-        ("ok", "%" + _like_escape(source) + "%"))
-    batches = {r[0] for r in cur if r[0]}
+    batches = {r[0] for r in con.execute(
+        "SELECT DISTINCT observed_date FROM capture_batches WHERE source=?", (source,))}
     return sorted(facts | batches)
 
 
@@ -998,13 +1004,21 @@ def field_coverage(con, source, max_gap_days=None):
                  "from (or no max_gap_days configured): we do not know whether they "
                  "are late, so nothing is claimed either way."),
     }
+    # The batch and the field are two different facts. A capture that imported
+    # nothing must be visible without overwriting what the fields say -- otherwise
+    # an "absent_on_latest" field flips to a batch-level status while
+    # schema_events still reports the field one, and the two disagree.
+    latest_batch = None
     if latest_capture_empty:
-        for f in out:
-            f["status"] = "no_facts_in_latest_capture"
-            f["verdict"] = ("the newest capture (%s) imported no usable facts at all -- "
-                            "this is a capture failure, not an absent field. Coverage "
-                            "below is measured on %s." % (latest, anchor))
+        latest_batch = {
+            "observed_date": latest,
+            "empty": True,
+            "note": ("the newest capture imported no usable facts at all -- treat it as "
+                     "a capture failure until proven otherwise; field statuses below are "
+                     "computed at %s" % anchor),
+        }
     return {"source": source, "dates": total_days, "latest": latest,
+            "latest_batch": latest_batch,
             "latest_capture_empty": latest_capture_empty,
             "coverage_anchor_date": anchor,
             "entities_latest": len(live), "fields": out,
@@ -1068,7 +1082,10 @@ def search_records(con, source, date=None, q=None, filters=None, sort=None,
                     "error": "unknown filter op %r; allowed: %s"
                              % (op, ", ".join(sorted(ops))),
                     "filters": filters}
-        if "value" not in f:
+        # A null value is as unusable as a missing key: 'val != None' is always
+        # true and 'val >= None' raises, so the same malformed filter produced
+        # "matches everything" and "matches nothing" depending on the operator.
+        if "value" not in f or f.get("value") is None:
             return {"source": source, "date": date, "total_matched": 0,
                     "error": "filter on %r is missing 'value'; without it '!=' matches "
                              "every row and '>=' matches none" % (fld,),

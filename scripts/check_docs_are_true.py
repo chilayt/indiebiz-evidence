@@ -215,6 +215,34 @@ def check_numbers():
     elif declared[0][1] != str(tests):
         problems.append("CHANGELOG says %s tests, repository has %d" % (declared[0][1], tests))
     tools = _count_tools()
+    # README states the test count and the scenario count too; a gate that checks
+    # only the CHANGELOG let a wrong README number pass.
+    m_rt = re.search(r"(\d+)\s*tests", readme)
+    if m_rt:
+        if int(m_rt.group(1)) != tests:
+            problems.append("README says %s tests, repository has %d" % (m_rt.group(1), tests))
+    else:
+        problems.append("README states no test count -- cannot verify it")
+    try:
+        from importlib import util as _u
+        _spec = _u.spec_from_file_location(
+            "gpa", os.path.join(ROOT, "scripts", "run_generic_precision_audit.py"))
+        _mod = _u.module_from_spec(_spec)
+        _spec.loader.exec_module(_mod)
+        scenarios = len(getattr(_mod, "SCENARIOS", []))
+    except Exception as e:
+        problems.append("cannot import the precision audit to count scenarios: %r" % (e,))
+        scenarios = None
+    if scenarios is not None:
+        m_sc = re.search(r"(\d+)\s*场景|(\d+)\s*scenarios", readme + changelog)
+        if m_sc:
+            claimed = int(m_sc.group(1) or m_sc.group(2))
+            if claimed != scenarios:
+                problems.append("docs claim %d scenarios, script defines %d"
+                                % (claimed, scenarios))
+    m_ct = re.search(r"11 个通用工具|11 个 MCP 工具|(\d+) 个通用工具", changelog)
+    if m_ct and m_ct.group(1) and int(m_ct.group(1)) != tools:
+        problems.append("CHANGELOG says %s tools, mcp_server has %d" % (m_ct.group(1), tools))
     m_tools = re.search(r"\*\*(\d+) 个工具\*\*", readme)
     expected_tools = int(m_tools.group(1)) if m_tools else None
     if expected_tools is None:

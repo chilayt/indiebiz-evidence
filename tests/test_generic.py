@@ -1251,7 +1251,80 @@ class TestPublicReviewP1Codex(unittest.TestCase):
         self.assertTrue(cov["latest_capture_empty"])
         self.assertEqual(cov["coverage_anchor_date"], "2099-02-01")
         price = [f for f in cov["fields"] if f["field"] == "price"][0]
-        self.assertEqual(price["status"], "no_facts_in_latest_capture")
+        # the field itself still says "the live entities stopped reporting it";
+        # the empty batch is reported separately and must not overwrite that
+        self.assertEqual(price["status"], "absent_on_latest")
+        self.assertTrue(cov["latest_batch"]["empty"])
+        self.assertIn("computed at 2099-02-01", cov["latest_batch"]["note"])
+        con.close()
+
+
+class TestPublicReviewRound2(unittest.TestCase):
+    """Round-two findings: a null filter value, a monotonic rule that still only
+    checked the endpoint, and a batch ledger that guessed the source from a path."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp(prefix="ibe-r2p-")
+
+    def _mk(self, name, files, cfg=None):
+        d = os.path.join(self.tmp, name)
+        os.makedirs(d, exist_ok=True)
+        for k, body in files.items():
+            with open(os.path.join(d, k + "-x.csv"), "w", encoding="utf-8", newline="\n") as f:
+                f.write(body.strip() + "\n")
+        if cfg:
+            with open(os.path.join(d, "source.json"), "w", encoding="utf-8") as f:
+                json.dump(cfg, f)
+        return d
+
+    def _con(self, name):
+        con = store.connect(os.path.join(self.tmp, name + ".db"))
+        store.init_db(con)
+        return con
+
+    def test_null_filter_value_is_rejected(self):
+        con = self._con("nullv")
+        d = self._mk("nullv", {"2099-01-01": "id,price\na,10\nb,20"})
+        generic.import_path(con, "nullv", d, verbose=False)
+        for op in ("!=", ">="):
+            r = generic.search_records(con, "nullv", filters=[{"field": "price", "op": op, "value": None}])
+            self.assertIn("error", r, op)
+        con.close()
+
+    def test_monotonic_regression_respects_boundary_in_a_gap(self):
+        con = self._con("monob")
+        d = self._mk("monob", {
+            "2099-01-01": "id,owner,total\na,ALPHA,1000",
+            "2099-01-02": "id,owner,total\na,ZULU,",
+            "2099-01-03": "id,owner,total\na,ZULU,10",
+        }, {"entity_column": "id", "identity_fields": ["owner"], "monotonic_fields": ["total"]})
+        generic.import_path(con, "monob", d, verbose=False)
+        generic.detect_generic(con, "monob", verbose=False)
+        kinds = [r[0] for r in con.execute("SELECT kind FROM anomalies")]
+        self.assertFalse(any(k.startswith("monotonic_regression") for k in kinds))
+        con.close()
+
+    def test_sources_with_overlapping_names_do_not_share_a_timeline(self):
+        con = self._con("names")
+        d1 = self._mk("shopx", {"2099-04-01": "id,v\na,1"})
+        d2 = self._mk("workshopx", {"2099-04-09": "id,v\nb,2"})
+        generic.import_path(con, "shop", d1, verbose=False)
+        generic.import_path(con, "workshop", d2, verbose=False)
+        self.assertEqual(generic._source_dates(con, "shop"), ["2099-04-01"])
+        self.assertEqual(generic._source_dates(con, "workshop"), ["2099-04-09"])
+        con.close()
+
+    def test_zero_fact_batch_is_reported_as_a_batch_not_a_field_state(self):
+        con = self._con("zero2")
+        d = self._mk("zero2", {"2099-05-01": "id,stock\na,in", "2099-05-02": "id,stock\na,"})
+        generic.import_path(con, "zero2", d, verbose=False)
+        cov = generic.field_coverage(con, "zero2")
+        self.assertEqual(cov["latest"], "2099-05-02")
+        self.assertTrue(cov["latest_batch"]["empty"])
+        # the field keeps its own verdict; the batch does not overwrite it
+        stock = [f for f in cov["fields"] if f["field"] == "stock"][0]
+        self.assertEqual(stock["status"], "absent_on_latest")
         con.close()
 
 if __name__ == "__main__":

@@ -67,7 +67,7 @@ python scripts/mcp_server.py --db data/my.db                          # 给 agen
 
 ```bash
 pip install .          # 零运行时依赖
-python scripts/run_tests.py                       # 87 tests, 跳过=失败
+python scripts/run_tests.py                       # 99 tests, 跳过=失败
 python scripts/run_generic_precision_audit.py     # 精度门禁：13 个带标签场景
 python scripts/check_docs_are_true.py             # 文档真值检查：照抄能不能复现
 ```

@@ -51,3 +51,16 @@ CREATE TABLE IF NOT EXISTS generic_facts(
 CREATE INDEX IF NOT EXISTS idx_anomalies_kind ON anomalies(kind);
 CREATE INDEX IF NOT EXISTS idx_gf_series ON generic_facts(source, entity, field, observed_date);
 CREATE INDEX IF NOT EXISTS idx_gf_date ON generic_facts(source, observed_date);
+
+-- One row per (source, capture date) the importer actually ran, including batches
+-- that yielded no usable facts. Without this the timeline could only be read from
+-- generic_facts, so a failed capture vanished and the previous day looked "latest".
+CREATE TABLE IF NOT EXISTS capture_batches(
+  source        TEXT NOT NULL,
+  observed_date TEXT NOT NULL,
+  files         INTEGER,
+  facts         INTEGER,
+  PRIMARY KEY(source, observed_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_batches_source ON capture_batches(source, observed_date);
