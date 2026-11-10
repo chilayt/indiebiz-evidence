@@ -217,7 +217,8 @@ def _read_text(path):
     last row -- silently, with zero warnings. A data tool that silently merges
     rows is worse than one that refuses the file.
     """
-    raw = open(path, "rb").read()
+    with open(path, "rb") as fh:
+        raw = fh.read()
     for enc in _ENCODINGS:
         try:
             return raw.decode(enc), enc
