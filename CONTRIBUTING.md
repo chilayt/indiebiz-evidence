@@ -36,15 +36,12 @@ is already uploaded — so a first-time contributor should still check their own
 ## Before opening a pull request
 
 ```bash
-python scripts/check_no_real_data.py       # nothing publishable in the tree
-python scripts/check_no_runtime_deps.py    # dependency promise intact
-python scripts/run_tests.py                # 0 skips allowed
-python scripts/run_generic_precision_audit.py
-python scripts/check_docs_are_true.py
-python scripts/mcp_server.py --db <demo.db> --selftest
+python scripts/run_release_gate.py   # all five gates, stops at the first failure
 ```
 
-All six must pass. A skipped test is a failure, not a pass.
+That single command runs: the data guard, the dependency contract, the tests (0
+skips allowed), the precision matrix and the doc truth check. CI runs the same
+entry point, so "it passed locally" and "it passes in CI" mean the same thing.
 
 ## Reporting a bug
 
