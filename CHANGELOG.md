@@ -10,7 +10,11 @@
   - `generic.py` 不再从垂直模块反向取辅助函数：`sync_lag_hours` / `likely_rename` 移入本仓 `_shared.py`
   - MCP Server 重写为通用版（11 工具），协议层与错误语义保持不变
   - docs/PATTERNS.md 保留九条纪律，事故证据链移至私有仓（公开层不再引用不存在的文件）
-- 测试 0 → **99**（通用引擎 + MCP 协议端到端；干净 clone 上 0 skip）
+- 测试 0 → **103**（通用引擎 + MCP 协议端到端；干净 clone 上 0 skip）
+- **发布前审（Codex）P0：输入解码会静默损坏数据**——GBK 编码的 CSV 里两个不同的中文 ID 都被
+  `errors="replace"` 解码成 U+FFFD，合并成一个实体、只剩最后一行、**零警告**。
+  现在改为**严格解码**：UTF-8 优先、GBK 回退、都失败则报错并计入 `errors`（不再是猜测或静默替换）。
+  同时修 `_to_num` 的数字类型分支：`inf`/`nan` 可通过早返回绕过有限性检查（JSON 里的 `1e999` 即中招）。
 - **公开复审第二轮（Codex + MiniMax）修复**：
   - `value: null` 的过滤器仍复现原缺陷（`!=` 全中、`>=` 全不中）：键存在但值为 null 现在与缺键同等对待
   - `monotonic_regression` 分支漏了区间边界检查（`ALPHA/1000 → ZULU/缺席 → ZULU/10` 仍报回退）：已与其它规则统一

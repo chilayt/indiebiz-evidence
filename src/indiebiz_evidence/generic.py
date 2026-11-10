@@ -53,6 +53,7 @@ from __future__ import annotations
 import csv
 import datetime as dt
 import hashlib
+import io
 import json
 import os
 import re
@@ -148,7 +149,8 @@ def _to_num(v):
     if v is None or isinstance(v, bool):
         return None
     if isinstance(v, (int, float)):
-        return float(v)
+        f = float(v)
+        return None if (f != f or f in (float('inf'), float('-inf'))) else f
     t = str(v).strip()
     if t.startswith("$"):
         t = t[1:].strip()
@@ -204,27 +206,49 @@ def _valid_date(s):
         return False
 
 
+_ENCODINGS = ("utf-8-sig", "gbk")
+
+
+def _read_text(path):
+    """Decode a source file strictly, or fail loudly.
+
+    errors="replace" turned undecodable bytes into U+FFFD, so a GBK export with
+    two different Chinese ids collapsed them into one entity and kept only the
+    last row -- silently, with zero warnings. A data tool that silently merges
+    rows is worse than one that refuses the file.
+    """
+    raw = open(path, "rb").read()
+    for enc in _ENCODINGS:
+        try:
+            return raw.decode(enc), enc
+        except UnicodeDecodeError:
+            continue
+    raise ValueError(
+        "%s is not valid UTF-8 or GBK; convert it to UTF-8 (undecodable bytes "
+        "would otherwise be replaced and rows silently merged)" % path)
+
+
 def _load_records(path):
     low = path.lower()
     if low.endswith(".jsonl"):
+        text, enc = _read_text(path)
         rows = []
-        with open(path, encoding="utf-8", errors="replace") as f:
-            for line in f:
-                line = line.strip()
-                if line:
-                    rows.append(json.loads(line))
+        for line in text.splitlines():
+            line = line.strip()
+            if line:
+                rows.append(json.loads(line))
         return rows
     if low.endswith(".json"):
-        with open(path, encoding="utf-8", errors="replace") as f:
-            data = json.load(f)
+        text, enc = _read_text(path)
+        data = json.loads(text)
         if isinstance(data, dict):
             if data and all(isinstance(v, dict) for v in data.values()):
                 # {entity: {fields}} map
                 return [dict(v, __entity_key__=k) for k, v in data.items()]
             return [data]
         return list(data)
-    with open(path, encoding="utf-8-sig", errors="replace", newline="") as f:
-        return [dict(r) for r in csv.DictReader(f)]
+    text, enc = _read_text(path)
+    return [dict(r) for r in csv.DictReader(io.StringIO(text, newline=""))]
 
 
 def load_source_config(input_path, explicit_path=None):

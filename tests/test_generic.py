@@ -1327,5 +1327,64 @@ class TestPublicReviewRound2(unittest.TestCase):
         self.assertEqual(stock["status"], "absent_on_latest")
         con.close()
 
+
+class TestInputDecoding(unittest.TestCase):
+    """Codex P0: errors="replace" silently merged rows.
+
+    A GBK export with two different Chinese ids decoded both to U+FFFD, so the
+    two products became one entity and only the last row survived -- no warning,
+    no error. For a tool whose job is to stop wrong conclusions, silently merging
+    rows is the worst possible failure.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="ibe-enc-")
+
+    def _con(self):
+        con = store.connect(os.path.join(self.tmp, "t.db"))
+        store.init_db(con)
+        return con
+
+    def test_gbk_file_keeps_distinct_entities(self):
+        d = os.path.join(self.tmp, "gbk")
+        os.makedirs(d)
+        body = "id,price\n商品甲,10\n商品乙,20\n"
+        with open(os.path.join(d, "2099-06-01-x.csv"), "w", encoding="gbk", newline="") as f:
+            f.write(body)
+        con = self._con()
+        st = generic.import_path(con, "gbk", d, verbose=False)
+        self.assertEqual(st["entities"], 2)
+        self.assertEqual(st["facts"], 2)
+        names = sorted(r[0] for r in con.execute("SELECT DISTINCT entity FROM generic_facts"))
+        self.assertEqual(names, ["商品乙", "商品甲"])
+        con.close()
+
+    def test_undecodable_file_is_an_error_not_a_guess(self):
+        d = os.path.join(self.tmp, "bad")
+        os.makedirs(d)
+        with open(os.path.join(d, "2099-06-02-x.csv"), "wb") as f:
+            f.write(b"id,price\n\xff\xfe\x00,1\n")
+        con = self._con()
+        st = generic.import_path(con, "bad", d, verbose=False)
+        self.assertEqual(st["errors"], 1)
+        self.assertEqual(st["facts"], 0)
+        con.close()
+
+    def test_utf8_still_wins(self):
+        d = os.path.join(self.tmp, "utf8")
+        os.makedirs(d)
+        with open(os.path.join(d, "2099-06-03-x.csv"), "w", encoding="utf-8", newline="") as f:
+            f.write("id,price\n商品甲,10\n")
+        con = self._con()
+        st = generic.import_path(con, "utf8", d, verbose=False)
+        self.assertEqual(st["entities"], 1)
+        con.close()
+
+    def test_non_finite_numbers_are_refused_in_every_branch(self):
+        for v in (float("inf"), float("-inf"), float("nan")):
+            self.assertIsNone(generic._to_num(v))
+        self.assertEqual(generic._to_num(12.0), 12.0)
+        self.assertIsNone(generic._to_num("1e999"))
+
 if __name__ == "__main__":
     unittest.main()
