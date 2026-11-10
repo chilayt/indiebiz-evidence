@@ -15,19 +15,24 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+      - name: This repository must not ship data or credentials
+        run: python scripts/check_no_real_data.py
+      - name: Zero runtime dependencies is a contract, not a claim
+        run: python scripts/check_no_runtime_deps.py
       - name: Unit + MCP protocol tests (skips are failures)
         run: python scripts/run_tests.py
       - name: Build synthetic demo DB
-        run: python scripts/make_demo_db.py --db /tmp/demo.db
+        run: python scripts/make_demo_db.py --db "$RUNNER_TEMP/demo.db"
       - name: MCP server selftest against the demo DB
-        run: python scripts/mcp_server.py --db /tmp/demo.db --selftest
+        run: python scripts/mcp_server.py --db "$RUNNER_TEMP/demo.db" --selftest
       - name: Documented health-report command must run
-        run: python scripts/audit_source.py --db /tmp/demo.db --source demo-prices
+        run: python scripts/audit_source.py --db "$RUNNER_TEMP/demo.db" --source demo-prices
       - name: Discipline-9 precision audit (labelled scenario matrix)
         run: python scripts/run_generic_precision_audit.py
       - name: Docs must be true (quickstart reproduces; stated counts match)
         run: python scripts/check_docs_are_true.py
-      - name: Packaging smoke (schema.sql must ship in the wheel)
+      - name: Install and confirm the package declares no runtime dependencies
         run: |
           pip install .
           python -c "import tempfile, os; from indiebiz_evidence import store; p=os.path.join(tempfile.mkdtemp(), 't.db'); con=store.connect(p); store.init_db(con); print('install smoke ok')"
+          python scripts/check_no_runtime_deps.py --installed

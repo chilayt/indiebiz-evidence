@@ -208,7 +208,12 @@ def check_numbers():
     head = parts[1] if len(parts) > 1 else ""
     if not head:
         return ["CHANGELOG has no version section -- cannot verify the stated counts"]
+    # accept both the "X -> Y" form and a plain "测试 N" claim; a version that does
+    # not change the test count still has to state it
     declared = re.findall(r"测试\s*\**\s*(\d+)\s*\**\s*(?:→|->)\s*\**\s*(\d+)", head)
+    if not declared:
+        plain = re.findall(r"测试\s*\**\s*(\d+)\s*/", head)
+        declared = [(None, n) for n in plain]
     tests = _count_tests()
     if not declared:
         problems.append("CHANGELOG newest section states no test count -- cannot verify it")

@@ -1,0 +1,16 @@
+#!/bin/sh
+# Refuse to commit data or credentials. Enable once per clone:
+#   git config core.hooksPath .githooks
+#
+# A Microsoft Store python stub is on PATH on some Windows machines: it exists,
+# reports a path, and never executes. So an interpreter is only accepted if it
+# can actually run code -- a hook that silently does nothing is worse than none.
+DIR="$(git rev-parse --show-toplevel)"
+for PY in python3 python py python.exe; do
+  if command -v "$PY" >/dev/null 2>&1 && "$PY" -c "import sys" >/dev/null 2>&1; then
+    exec "$PY" "$DIR/scripts/check_no_real_data.py" --staged
+  fi
+done
+echo "pre-commit: no working python interpreter found on PATH." >&2
+echo "  Install Python, or run: git commit --no-verify  (CI still enforces the guard)" >&2
+exit 1

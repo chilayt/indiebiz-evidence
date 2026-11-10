@@ -63,6 +63,12 @@ python scripts/mcp_server.py --db data/my.db                          # 给 agen
 | 节奏 | `gapped_transition`（断档超过该源正常节奏） |
 | 时间戳 | `stale_timestamp`（源侧时间戳滞后） |
 
+## 成熟度
+
+**v0.5.x 是实验性版本**。已用：合成回归矩阵（13 场景）、103 项测试、文档真值检查。
+**未用真实语料验证精度**——这条缺口写在 [COMPLIANCE.md](COMPLIANCE.md) §六，不藏着。
+适用场景：本地、受信任输入、单机使用。不承诺处理任意规模或敌意输入。
+
 ## 安装
 
 ```bash
