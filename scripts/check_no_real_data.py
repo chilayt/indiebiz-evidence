@@ -40,15 +40,38 @@ SKIP_PREFIX = (".git/", "node_modules/", "__pycache__/", "build/", "dist/", ".ve
 SELF = "scripts/check_no_real_data.py"
 
 
+class GuardError(Exception):
+    """The guard could not do its job. That is a failure, never a pass."""
+
+
+def _git(*args):
+    """Run git, and treat any failure as fatal.
+
+    A guard that cannot enumerate files reported "checked 0 files" and exited 0 --
+    a check that looks like it ran while checking nothing. Wrong answer dressed as
+    a right one is the exact failure this project exists to prevent.
+    """
+    try:
+        p = subprocess.run(("git",) + args, cwd=ROOT, capture_output=True, text=True)
+    except OSError as e:
+        raise GuardError("cannot run git: %s" % (e,))
+    if p.returncode != 0:
+        raise GuardError("git %s failed (%d): %s"
+                         % (" ".join(args), p.returncode, (p.stderr or "").strip()[:300]))
+    return [x for x in p.stdout.splitlines() if x.strip()]
+
+
 def tracked_files():
-    out = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True)
-    return [p for p in out.stdout.splitlines() if p.strip()]
+    files = _git("ls-files")
+    if not files:
+        raise GuardError("git ls-files returned nothing -- refusing to report success "
+                         "on an empty or unreadable repository")
+    return files
 
 
 def staged_files():
-    out = subprocess.run(["git", "diff", "--cached", "--name-only", "--diff-filter=ACMR"],
-                         cwd=ROOT, capture_output=True, text=True)
-    return [p for p in out.stdout.splitlines() if p.strip()]
+    # --cached with a diff filter lists what the commit will contain
+    return _git("diff", "--cached", "--name-only", "--diff-filter=ACMR")
 
 
 def problems_for(path):
@@ -65,6 +88,14 @@ def problems_for(path):
 
 
 def main(argv=None):
+    try:
+        return _main(argv)
+    except GuardError as e:
+        sys.stderr.write("DATA GUARD COULD NOT RUN: %s\n" % (e,))
+        return 1
+
+
+def _main(argv=None):
     argv = argv or sys.argv[1:]
     pre_commit = "--staged" in argv
     files = staged_files() if pre_commit else tracked_files()
@@ -81,8 +112,18 @@ def main(argv=None):
         if f.endswith((".png", ".jpg", ".jpeg", ".webp", ".gif", ".pdf")):
             continue
         try:
-            with open(os.path.join(ROOT, f), encoding="utf-8", errors="ignore") as fh:
-                body = fh.read()
+            if pre_commit:
+                # Read the STAGED blob. Reading the working tree let an edit after
+                # 'git add' decide what the check saw, so the committed content was
+                # never actually inspected.
+                p = subprocess.run(("git", "show", ":" + f), cwd=ROOT,
+                                   capture_output=True, text=True, errors="ignore")
+                if p.returncode != 0:
+                    raise GuardError("cannot read staged blob %s" % f)
+                body = p.stdout
+            else:
+                with open(os.path.join(ROOT, f), encoding="utf-8", errors="ignore") as fh:
+                    body = fh.read()
         except OSError:
             continue
         for m in MARKERS:

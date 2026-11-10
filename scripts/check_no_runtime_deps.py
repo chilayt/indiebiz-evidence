@@ -56,12 +56,35 @@ def main(argv=None):
     deps = declared_deps()
     if isinstance(deps, list) and deps:
         problems.append("pyproject declares runtime dependencies: %r" % (deps,))
+    elif isinstance(deps, str) and deps not in ("", "[]", "?", "()"):
+        problems.append("pyproject declares runtime dependencies (unparsed form): %r" % (deps,))
     # standard library only
-    stdlib = set(sys.stdlib_module_names) if hasattr(sys, "stdlib_module_names") else set()
-    if not stdlib:
-        stdlib = {"os", "sys", "json", "csv", "io", "re", "sqlite3", "hashlib",
-                  "datetime", "argparse", "subprocess", "tempfile", "shutil",
-                  "unittest", "math", "collections", "itertools", "typing", "pathlib"}
+    # sys.stdlib_module_names exists from 3.10. On 3.9 the fallback list must be
+    # complete enough not to accuse the package of depending on itself: __future__
+    # and unicodedata were reported as third-party, which would fail CI on 3.9.
+    if hasattr(sys, "stdlib_module_names"):
+        stdlib = set(sys.stdlib_module_names)
+    else:
+        stdlib = {
+            "__future__", "abc", "argparse", "array", "ast", "base64", "binascii",
+            "bisect", "builtins", "bz2", "calendar", "cmath", "codecs", "collections",
+            "colorsys", "configparser", "contextlib", "copy", "csv", "ctypes",
+            "datetime", "decimal", "difflib", "dis", "email", "enum", "errno",
+            "faulthandler", "filecmp", "fileinput", "fnmatch", "fractions",
+            "functools", "gc", "getopt", "getpass", "gettext", "glob", "gzip",
+            "hashlib", "heapq", "hmac", "html", "http", "imaplib", "importlib",
+            "inspect", "io", "ipaddress", "itertools", "json", "keyword", "linecache",
+            "locale", "logging", "lzma", "mailbox", "math", "mimetypes", "mmap",
+            "numbers", "operator", "os", "pathlib", "pickle", "pkgutil", "platform",
+            "plistlib", "pprint", "profile", "pstats", "pty", "queue", "quopri",
+            "random", "re", "reprlib", "secrets", "select", "shelve", "shlex",
+            "shutil", "signal", "smtplib", "socket", "sqlite3", "ssl", "stat",
+            "statistics", "string", "struct", "subprocess", "sys", "sysconfig",
+            "tarfile", "tempfile", "textwrap", "threading", "time", "timeit",
+            "token", "tokenize", "traceback", "types", "typing", "unicodedata",
+            "unittest", "urllib", "uuid", "venv", "warnings", "wave", "weakref",
+            "webbrowser", "xml", "xmlrpc", "zipfile", "zipimport", "zlib",
+        }
     third = sorted(r for r in imported_roots() if r not in stdlib and r != "indiebiz_evidence")
     if third:
         problems.append("package imports non-stdlib modules: %r" % (third,))
