@@ -49,6 +49,13 @@ Include: operating system, Python version, the command you ran, and the smallest
 input that reproduces it. If the input is data-shaped, **synthesize it** — never
 attach a real export.
 
+## How this repository is maintained
+
+[ROADMAP.md](ROADMAP.md) states what is planned, what is deliberately deferred and
+what the project will not do. [docs/MAINTAINING.md](docs/MAINTAINING.md) records the
+working protocol: task cards, unified-diff reviews, what gets rejected outright and
+how disagreements are settled.
+
 ## Version and support policy
 
 - Patch (`0.5.x`): fixes, docs, guards. Interface and output shapes stay stable.
