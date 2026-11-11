@@ -96,13 +96,12 @@ class TestC04GapSpan(AcceptanceBase):
 class TestC05EmptySnapshot(AcceptanceBase):
     """C05: an empty snapshot, a parse failure and no capture are different things.
 
-    Both assertions below currently FAIL. Per C-SPEC they are recorded rather than
-    quietly fixed: they are the entry evidence for the time-semantics phase. They
-    are marked expectedFailure so the suite stays honest -- when either starts
-    passing, unittest reports 'unexpected success' and the marker must be removed.
+    A dated empty export is a capture that produced nothing: it must appear on the
+    timeline, and re-importing a date as empty must clear that date's old facts
+    (the same REPLACE semantics as a non-empty re-import). Clearing existing facts
+    is destructive, so it must be warned, never silent.
     """
 
-    @unittest.expectedFailure
     def test_c05a_new_empty_capture_leaves_a_trace(self):
         source = "c05a"
         self.import_csv(source, {"2099-06-01": "id,price\nA,10\n"})
@@ -112,14 +111,15 @@ class TestC05EmptySnapshot(AcceptanceBase):
                          ["2099-06-01", "2099-06-02"],
                          "a capture that imported nothing must still be on the timeline")
 
-    @unittest.expectedFailure
     def test_c05b_reimport_as_empty_clears_old_facts(self):
         source = "c05b"
         self.import_csv(source, {"2099-06-01": "id,price\nA,10\nB,20\n"})
-        self.import_csv(source, {"2099-06-01": "id,price\n"})
+        stats = self.import_csv(source, {"2099-06-01": "id,price\n"})
         left = self.con.execute(
             "SELECT COUNT(*) FROM generic_facts WHERE source=?", (source,)).fetchone()[0]
         self.assertEqual(left, 0, "re-importing the same date as empty must not keep old facts")
+        self.assertTrue(any("empty re-import" in w and "cleared" in w for w in stats["warnings"]),
+                        "clearing existing facts on an empty re-import must be warned, not silent")
 
 
 class TestC06ReimportConsistency(AcceptanceBase):

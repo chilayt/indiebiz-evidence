@@ -344,6 +344,44 @@ def import_path(con, source, input_path, config=None, entity_column=None, verbos
             print("[import:%s] ERROR %s: %s" % (source, os.path.basename(path), msg), flush=True)
             continue
         if not records:
+            # An empty export is still a capture: the file exists and was processed.
+            # Skipping it entirely made a zero-fact capture vanish from the timeline
+            # (C05a) and let a re-import-as-empty keep the old facts (C05b). A dated
+            # file is a full snapshot for that date, so an empty one means "nothing on
+            # this date": record the batch and apply the same REPLACE semantics as a
+            # non-empty re-import. Clearing existing facts is destructive, so it is
+            # warned, never silent -- an empty file is often a broken scraper.
+            if fdate:
+                if fdate not in cleared_dates:
+                    n_old = con.execute(
+                        "SELECT COUNT(*) FROM generic_facts WHERE source=? AND observed_date=?",
+                        (source, fdate)).fetchone()[0]
+                    con.execute(
+                        "DELETE FROM generic_facts WHERE source=? AND observed_date=?",
+                        (source, fdate))
+                    cleared_dates.add(fdate)
+                    if n_old:
+                        w = ("empty re-import of %s cleared %d existing fact(s): if this was a "
+                             "broken scraper rather than a real empty capture, re-import the "
+                             "good export" % (fdate, n_old))
+                        stats["warnings"].append(w)
+                        print("[import:%s] WARN %s" % (source, w), flush=True)
+                stats["dates"].add(fdate)
+                stats["files"] += 1
+                store.log_file(con, path, fdate, None, "ok",
+                               "generic:%s facts=0 (empty capture)" % source)
+                if fdate in seen_dates:
+                    w = ("date %s fed by two files (%s then %s): later facts overwrite earlier ones "
+                         "(raw_ref keeps only the last); merge files or re-import deliberately"
+                         % (fdate, seen_dates[fdate], path))
+                    stats["warnings"].append(w)
+                    print("[import:%s] WARN %s" % (source, w), flush=True)
+                else:
+                    seen_dates[fdate] = path
+            else:
+                stats["warnings"].append(
+                    "empty file with no filename date, nothing to record: %s"
+                    % os.path.basename(path))
             continue
         stats["files"] += 1
         ecol, candidates, explicit = _resolve_entity_column(records, cfg, entity_column)
