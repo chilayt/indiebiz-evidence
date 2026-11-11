@@ -69,4 +69,11 @@ jobs:
           "$VPY" -m indiebiz_evidence.cli audit --db demo.db --source demo-prices
           "$VPY" -m indiebiz_evidence.cli mcp --db demo.db --selftest
       - name: Installed metadata declares no runtime dependencies
-        run: "$VPY" -c "from importlib.metadata import requires; r=requires('indiebiz-evidence') or []; assert not [x for x in r if 'extra ==' not in x], r; print('no runtime deps OK')"
+        run: |
+          "$VPY" - <<'PY'
+          from importlib.metadata import requires
+          r = requires("indiebiz-evidence") or []
+          hard = [x for x in r if "extra ==" not in x]
+          assert not hard, hard
+          print("no runtime deps OK")
+          PY
