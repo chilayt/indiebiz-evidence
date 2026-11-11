@@ -16,22 +16,57 @@
 
 | 翻车方式 | 后果 | 这里的做法 |
 |---|---|---|
-| 某个字段**悄悄不再输出**（页面改版） | 你以为"上游没这个数据了"，或根本没注意 | `audit_field_coverage` 逐字段给覆盖率，并在"以前有、最新没有"时判 ``absent_on_latest`，**先怀疑自己的抓取器** |
+| 某个字段**悄悄不再输出**（页面改版） | 你以为"上游没这个数据了"，或根本没注意 | `audit_field_coverage` 逐字段给覆盖率，并在"以前有、最新没有"时判 `absent_on_latest`，**先怀疑自己的抓取器** |
 | 某条记录**整条消失**（下架/招满/撤稿） | 被当成"数据没抓到"或直接漏看 | `entity_disappeared`，并明确写"下架和漏抓从这里看一样，两处都要查" |
 | 抓取**停了 30 天**，两个点被当成"隔了一天" | 每个指标都像一夜暴涨 | 学习该源自己的节奏；跨断档的变化明写跨度（如 `over 30 days`），不伪造精度 |
 | 同一个东西**三种写法**拼不起来 | 三个实体，永远对不上 | `resolve_entities` / `find_duplicate_entities` 给**候选和证据**，绝不自动合并 |
 | 缺失字段被当 0 | 有收入的项目被判成"零收入" | 缺席不落库、不参与比较、显示为缺席——**在查询层就成立，不靠你记得** |
 
-## 五分钟上手（面向做采集的人）
-
-[**docs/QUICKSTART-COLLECTOR.md**](docs/QUICKSTART-COLLECTOR.md) —— 用四天真实会踩坑的竞品价格数据，
-带你从 `run_import.py` 到 `audit_source.py`，**每一段输出都是照抄实跑结果**（并用 CI 机制保证它不会漂移）。
+## 五分钟上手（先跑 demo，不用先有自己的数据）
 
 ```bash
-python scripts/run_import.py --source competitors --input ./my-exports --db data/my.db
-python scripts/audit_source.py --db data/my.db --source competitors   # 一句话健康报告
-python scripts/mcp_server.py --db data/my.db                          # 给 agent 用的 stdio MCP
+pip install .                              # 零运行时依赖
+indiebiz-evidence demo --db demo.db        # 合成数据，立刻看到 6 类异常
+indiebiz-evidence audit --db demo.db --source demo-prices   # 一句话健康报告
+indiebiz-evidence mcp --db demo.db --selftest               # 11 个 MCP 工具自检
 ```
+
+demo 用的是 2099 年的虚构实体，**不需要你先准备任何数据**。装完在任意目录都能跑
+（演示数据随包分发，不依赖仓库目录）。
+
+**用你自己的数据**：把按日期命名的 CSV/JSON 导出放进一个目录，然后
+
+```bash
+indiebiz-evidence import --source competitors --input ./my-exports --db data/my.db
+indiebiz-evidence audit --db data/my.db --source competitors
+```
+
+> **路径规则**：`--input` / `--db` 都相对**当前工作目录**解析（和任何普通 CLI 一样）。
+> 相对路径找不到时，import 会明确报错退出，不会静默建一个空库。
+
+更完整的四天踩坑教程见 [**docs/QUICKSTART-COLLECTOR.md**](docs/QUICKSTART-COLLECTOR.md)，
+**每一段输出都是照抄实跑结果**（CI 机制保证它不会漂移）。仓库内也可用
+`python scripts/make_demo_db.py` / `run_import.py` / `audit_source.py`（与安装版等价）。
+
+## 接进你的 agent（MCP 宿主配置）
+
+MCP server 走 stdio。在宿主（Claude Desktop、Codex 等）的配置里加一段，
+**用绝对路径**指向解释器和数据库：
+
+```json
+{
+  "mcpServers": {
+    "indiebiz-evidence": {
+      "command": "indiebiz-evidence",
+      "args": ["mcp", "--db", "/absolute/path/to/data/my.db"]
+    }
+  }
+}
+```
+
+若宿主找不到 `indiebiz-evidence` 命令，把 `command` 换成解释器绝对路径、
+`args` 换成 `["-m", "indiebiz_evidence.cli", "mcp", "--db", "..."]`。
+配置后重启宿主，先调 `list_sources` 确认连上了。
 
 ## 十一个 MCP 工具
 
@@ -47,7 +82,7 @@ python scripts/mcp_server.py --db data/my.db                          # 给 agen
 | `list_entities` | 源内实体清单（首末次出现 / 出现的抓取日数 / 事实数） |
 | `find_duplicate_entities` | 源内合并候选（`Acme Widget` vs `acme_widget`），带逐对证据 |
 | `resolve_entities` | 跨源找同一个东西的各种写法——只给候选，不自动合并 |
-| `list_source_anomalies` | 检测到的异常：数值摆动、数值摆动、累计回退、字段/实体消失、文本漂移、源改版、抓取断档 |
+| `list_source_anomalies` | 检测到的异常：数值摆动、累计回退、字段/实体消失、文本漂移、源改版、抓取断档 |
 
 工具描述里写死了纪律：**解读任何变化前先查异常；缺失≠0；不跨身份边界做差；跨断档的变化不是一夜之间的；候选不是结论。**
 
@@ -65,17 +100,15 @@ python scripts/mcp_server.py --db data/my.db                          # 给 agen
 
 ## 成熟度
 
-**v0.5.x 是实验性版本**。已用：合成回归矩阵（13 场景）、103 项测试、文档真值检查。
+**v0.5.x 是实验性版本**。已用：合成回归矩阵（13 场景）、125 项测试、文档真值检查。
 **未用真实语料验证精度**——这条缺口写在 [COMPLIANCE.md](COMPLIANCE.md) §六，不藏着。
 适用场景：本地、受信任输入、单机使用。不承诺处理任意规模或敌意输入。
 
 ## 安装
 
 ```bash
-pip install .          # 零运行时依赖
-python scripts/run_tests.py                       # 125 tests, 跳过=失败
-python scripts/run_generic_precision_audit.py     # 精度门禁：13 个带标签场景
-python scripts/check_docs_are_true.py             # 文档真值检查：照抄能不能复现
+pip install .                          # 零运行时依赖，装出 indiebiz-evidence 命令
+python scripts/run_release_gate.py     # 五道门禁单一入口（125 tests，跳过=失败；CI 同款）
 ```
 
 ## 数据与隐私

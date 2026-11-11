@@ -15,6 +15,14 @@
 - **变异测试验证有效性**：禁用边界检查、伪造跨度、不清理旧事实、退回 replace 解码、
   允许未抓取日期——五个变异**全部被杀死**
 - 测试 125 / 0 skip（含 2 个 expectedFailure）
+- **阶段 1：装完即用（跨平台）**
+  - 演示数据随包分发（`demo_data/`），`pip install` 后在**任意目录**可跑，不再依赖仓库目录
+  - 新增安装命令 `indiebiz-evidence`（demo / import / audit / mcp 四个子命令）；审计逻辑入包（`reporting.py`）
+  - 所有 CLI 路径相对**当前工作目录**解析（旧脚本相对仓库根，换个目录就坏）；`--input` 不存在时明确报错退出
+  - CI 改为矩阵：ubuntu/windows/macos × Python 3.9/3.12，另设**安装验收** job（建 wheel→全新 venv→仓库外跑 demo/audit/mcp）
+  - 文档检查器 `shlex.split(posix=False)`：既保住带空格的路径，又不吃掉 Windows 反斜杠
+  - README 改为 **demo 前置**（不用先有自己的数据），补 MCP 宿主配置片段与路径规则；QUICKSTART 补 demo 入口
+  - 新增 `tests/test_cli.py`（安装入口 + CWD 相对路径）
 
 ## v0.5.2 (2026-11-10)
 - **独立合成验收 C01/C02 落地**（按冻结的 `docs/acceptance/C-SPEC.md`）
