@@ -42,6 +42,13 @@ def report(con, source):
         rhythm = "抓取次数太少，节奏未知（不臆测）"
     print("抓取日 %d 天 | 实体 %d 个 | 字段 %d 个 | %s"
           % (cov["dates"], cov["entities_latest"], len(cov["fields"]), rhythm))
+    # An empty latest capture must be stated, not hidden behind "no anomalies"
+    # (Codex 2026-11-11): "无异常" is not the same as "采集健康".
+    if cov.get("latest_capture_empty"):
+        print()
+        print("⚠ 最新抓取 %s 没有导入任何可用事实（空批次）。" % cov.get("latest"))
+        print("  下方覆盖率以 %s 为参照计算；空批次可能是抓取器故障，先查原始文件再下结论。"
+              % cov.get("coverage_anchor_date"))
     print()
     print("字段覆盖")
     print("  %-16s %8s %8s %10s  %s" % ("字段", "覆盖", "出现", "最新实体", "状态"))

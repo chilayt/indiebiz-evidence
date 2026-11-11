@@ -52,6 +52,33 @@ class TestInstalledCli(unittest.TestCase):
                        "--db", "my.db"])
         self.assertEqual(rc, 3)
 
+    def test_empty_reimport_refused_by_default_allowed_with_flag(self):
+        from indiebiz_evidence import store
+        os.makedirs("exports")
+        with open(os.path.join("exports", "2099-01-01.csv"), "w",
+                  encoding="utf-8", newline="") as f:
+            f.write("id,price\nA,10\nB,20\n")
+        cli.main(["import", "--source", "s", "--input", "exports", "--db", "my.db"])
+        # overwrite the same date with an empty export
+        with open(os.path.join("exports", "2099-01-01.csv"), "w",
+                  encoding="utf-8", newline="") as f:
+            f.write("id,price\n")
+        # default: refused, NOT a crash/exit-3-after-commit; old facts kept
+        rc = cli.main(["import", "--source", "s", "--input", "exports", "--db", "my.db"])
+        self.assertEqual(rc, 0)
+        con = store.connect("my.db")
+        n = con.execute("SELECT COUNT(*) FROM generic_facts WHERE source='s'").fetchone()[0]
+        con.close()
+        self.assertEqual(n, 2, "default must keep the existing facts")
+        # explicit flag: the destructive clear is allowed
+        rc = cli.main(["import", "--source", "s", "--input", "exports", "--db", "my.db",
+                       "--allow-empty-replace"])
+        self.assertEqual(rc, 0)
+        con = store.connect("my.db")
+        n = con.execute("SELECT COUNT(*) FROM generic_facts WHERE source='s'").fetchone()[0]
+        con.close()
+        self.assertEqual(n, 0, "--allow-empty-replace clears the facts")
+
     def test_mcp_selftest_via_cli(self):
         cli.main(["demo", "--db", "demo.db"])
         rc = cli.main(["mcp", "--db", "demo.db", "--selftest"])

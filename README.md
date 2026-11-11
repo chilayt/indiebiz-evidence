@@ -100,7 +100,7 @@ MCP server 走 stdio。在宿主（Claude Desktop、Codex 等）的配置里加�
 
 ## 成熟度
 
-**v0.5.x 是实验性版本**。已用：合成回归矩阵（13 场景）、125 项测试、文档真值检查。
+**v0.5.x 是实验性版本**。已用：合成回归矩阵（13 场景）、126 项测试、文档真值检查。
 **未用真实语料验证精度**——这条缺口写在 [COMPLIANCE.md](COMPLIANCE.md) §六，不藏着。
 适用场景：本地、受信任输入、单机使用。不承诺处理任意规模或敌意输入。
 
@@ -108,7 +108,7 @@ MCP server 走 stdio。在宿主（Claude Desktop、Codex 等）的配置里加�
 
 ```bash
 pip install .                          # 零运行时依赖，装出 indiebiz-evidence 命令
-python scripts/run_release_gate.py     # 五道门禁单一入口（125 tests，跳过=失败；CI 同款）
+python scripts/run_release_gate.py     # 五道门禁单一入口（126 tests，跳过=失败；CI 同款）
 ```
 
 ## 数据与隐私

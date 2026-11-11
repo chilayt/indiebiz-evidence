@@ -37,7 +37,8 @@ def _cmd_import(a):
     store.init_db(con)
     try:
         stats = generic.import_path(con, a.source, os.path.abspath(a.input),
-                                    entity_column=a.entity_column)
+                                    entity_column=a.entity_column,
+                                    allow_empty_replace=a.allow_empty_replace)
     except FileNotFoundError:
         print("[import] FATAL: input path does not exist: %s" % os.path.abspath(a.input))
         con.close()
@@ -46,13 +47,21 @@ def _cmd_import(a):
         print("[import] FATAL: no CSV/JSON/JSONL files found under %s" % a.input)
         con.close()
         return 3
-    if stats.get("errors") or stats["facts"] == 0:
-        print("[import] FATAL: errors=%d facts=%d -- nothing usable was imported; "
-              "check warnings above (a typo'd entity/date column must fail loudly, not silently)"
-              % (stats.get("errors", 0), stats["facts"]))
+    if stats.get("errors"):
+        print("[import] FATAL: errors=%d -- nothing usable was imported; check warnings "
+              "above (a typo'd entity/date column must fail loudly, not silently)"
+              % stats["errors"])
         con.close()
         return 3
+    # facts==0 is NOT itself a failure: it can be a valid empty capture or a refused
+    # empty replace. Always run detection so anomalies stay consistent with the facts
+    # (Codex: 'report failure but already committed the deletion' is unacceptable).
     counts = generic.detect_generic(con, a.source)
+    if stats["facts"] == 0:
+        print("[import] 0 usable facts imported (empty capture, or an empty replace was refused)")
+    if stats.get("refused_empty_replace"):
+        print("[import] %d empty replace(s) REFUSED -- existing facts kept; "
+              "pass --allow-empty-replace to override" % stats["refused_empty_replace"])
     print("[import] anomalies for %s: %s" % (a.source, counts or "none"))
     print("[import] query via MCP: list_sources / get_source_entity / query_series "
           "(anomaly slug namespace '%s:<entity>')" % a.source)
@@ -88,6 +97,9 @@ def main(argv=None):
     p.add_argument("--input", required=True, help="directory or file of dated exports (relative to CWD)")
     p.add_argument("--entity-column", default=None)
     p.add_argument("--db", default="data/evidence.db")
+    p.add_argument("--allow-empty-replace", action="store_true",
+                   help="permit a zero-fact export to delete a date's existing facts "
+                        "(default: refuse, because an empty file is usually a broken scraper)")
     p.set_defaults(fn=_cmd_import)
 
     p = sub.add_parser("audit", help="one-shot health report: is my collection still healthy?")

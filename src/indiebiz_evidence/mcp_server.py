@@ -517,6 +517,10 @@ def serve(db_path: str):
 
 def selftest(db_path: str):
     """Human-runnable smoke: call every tool once and print what came back."""
+    # serve() reconfigures stdio but selftest did not: on a GBK console an entity
+    # with a non-GBK character raised UnicodeEncodeError (Codex 2026-11-11). CI's
+    # global PYTHONIOENCODING=utf-8 masked it.
+    _reconfigure_stdio()
     if not os.path.exists(db_path):
         print("evidence db not found: %s" % db_path)
         return 1

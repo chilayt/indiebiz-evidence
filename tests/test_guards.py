@@ -63,29 +63,14 @@ class TestDataGuardFailurePaths(unittest.TestCase):
                         "staged mode must read the blob via 'git show :path'")
 
 
-class TestDependencyGuardPython39(unittest.TestCase):
-    def test_stdlib_fallback_covers_what_the_package_imports(self):
-        """Python 3.9 has no sys.stdlib_module_names; the fallback must not accuse
-        the package of importing __future__ or unicodedata as third-party deps."""
-        had = hasattr(sys, "stdlib_module_names")
-        saved = getattr(sys, "stdlib_module_names", None)
-        try:
-            if had:
-                del sys.stdlib_module_names
-            roots = dep_guard.imported_roots()
-            stdlib = dep_guard.main.__globals__  # ensure module loaded
-            self.assertIn("__future__", roots)
-            self.assertIn("unicodedata", roots)
-            rc = dep_guard.main([])
-            self.assertEqual(rc, 0, "python 3.9 fallback must not report false positives")
-        finally:
-            if had:
-                sys.stdlib_module_names = saved
+class TestDependencyGuard(unittest.TestCase):
+    # Python 3.11+ is the contract, so the guard uses tomllib and
+    # sys.stdlib_module_names directly (the 3.9 fallbacks were removed).
 
-    def test_string_form_dependency_declaration_is_rejected(self):
+    def test_declared_dependency_is_rejected(self):
         orig = dep_guard.declared_deps
         try:
-            dep_guard.declared_deps = lambda: '["requests"]'
+            dep_guard.declared_deps = lambda: ["requests"]
             self.assertEqual(dep_guard.main([]), 1)
         finally:
             dep_guard.declared_deps = orig

@@ -306,8 +306,48 @@ def _check_namespace(source, entity=None):
                          "separator); got %r" % (entity,))
 
 
-def import_path(con, source, input_path, config=None, entity_column=None, verbose=True):
-    """Import a directory (or single file) of dated CSV/JSON snapshots."""
+def _apply_replace(con, source, d, n_new, allow_empty_replace, cleared_dates, stats, path):
+    """REPLACE semantics for one capture date, refusing destructive empty replaces.
+
+    A non-empty re-import clears the date's old facts (so an edited-to-absent value
+    cannot survive as a ghost). But replacing a date that HAS facts with ZERO new
+    facts is destructive and an empty export is usually a broken scraper, so it is
+    refused by default and only done with allow_empty_replace. Returns True if the
+    date was cleared (caller may write / record an empty batch), False if refused
+    (old facts kept). Codex review 2026-11-11: a warning alone cannot prevent the
+    wrong deletion, and 'report failure but already committed' is unacceptable.
+    """
+    if d in cleared_dates:
+        return True
+    n_old = con.execute(
+        "SELECT COUNT(*) FROM generic_facts WHERE source=? AND observed_date=?",
+        (source, d)).fetchone()[0]
+    if n_new == 0 and n_old > 0 and not allow_empty_replace:
+        stats["refused_empty_replace"] += 1
+        w = ("refused to replace %s with an empty export: %d existing fact(s) kept. "
+             "An empty file is often a broken scraper; pass --allow-empty-replace to "
+             "override" % (d, n_old))
+        stats["warnings"].append(w)
+        print("[import:%s] WARN %s" % (source, w), flush=True)
+        store.log_file(con, path, d, None, "warn", "generic:%s refused_empty_replace" % source)
+        return False
+    con.execute("DELETE FROM generic_facts WHERE source=? AND observed_date=?", (source, d))
+    cleared_dates.add(d)
+    if n_new == 0 and n_old > 0:
+        w = ("empty re-import of %s cleared %d existing fact(s) (--allow-empty-replace)"
+             % (d, n_old))
+        stats["warnings"].append(w)
+        print("[import:%s] WARN %s" % (source, w), flush=True)
+    return True
+
+
+def import_path(con, source, input_path, config=None, entity_column=None, verbose=True,
+                allow_empty_replace=False):
+    """Import a directory (or single file) of dated CSV/JSON snapshots.
+
+    allow_empty_replace: permit a zero-fact export to delete a date's existing
+    facts. Default False refuses such destructive replaces (keeps the old facts).
+    """
     _check_namespace(source)
     cfg = config if config is not None else load_source_config(input_path)
     markers = set(m.casefold() for m in (cfg.get("null_markers") or DEFAULT_CONFIG["null_markers"]))
@@ -324,7 +364,7 @@ def import_path(con, source, input_path, config=None, entity_column=None, verbos
         raise FileNotFoundError(input_path)
 
     stats = {"files": 0, "facts": 0, "skipped_records": 0, "skipped_values": 0,
-             "invalid_dates": 0, "errors": 0, "warnings": [],
+             "invalid_dates": 0, "errors": 0, "refused_empty_replace": 0, "warnings": [],
              "entities": set(), "fields": set(), "dates": set()}
     seen_dates = {}   # date -> first file that provided it (P1-B)
     cleared_dates = set()  # (source,date) already cleared for replace semantics
@@ -345,39 +385,27 @@ def import_path(con, source, input_path, config=None, entity_column=None, verbos
             continue
         if not records:
             # An empty export is still a capture: the file exists and was processed.
-            # Skipping it entirely made a zero-fact capture vanish from the timeline
-            # (C05a) and let a re-import-as-empty keep the old facts (C05b). A dated
-            # file is a full snapshot for that date, so an empty one means "nothing on
-            # this date": record the batch and apply the same REPLACE semantics as a
-            # non-empty re-import. Clearing existing facts is destructive, so it is
-            # warned, never silent -- an empty file is often a broken scraper.
+            # A NEW empty date is recorded as a zero-fact batch (C05a). But replacing
+            # a date that already has facts with zero facts is destructive and usually
+            # a broken scraper, so it is refused by default (C05b / Codex 2026-11-11);
+            # --allow-empty-replace overrides. The decision is in _apply_replace.
             if fdate:
-                if fdate not in cleared_dates:
-                    n_old = con.execute(
-                        "SELECT COUNT(*) FROM generic_facts WHERE source=? AND observed_date=?",
-                        (source, fdate)).fetchone()[0]
-                    con.execute(
-                        "DELETE FROM generic_facts WHERE source=? AND observed_date=?",
-                        (source, fdate))
-                    cleared_dates.add(fdate)
-                    if n_old:
-                        w = ("empty re-import of %s cleared %d existing fact(s): if this was a "
-                             "broken scraper rather than a real empty capture, re-import the "
-                             "good export" % (fdate, n_old))
+                cleared = _apply_replace(con, source, fdate, 0, allow_empty_replace,
+                                         cleared_dates, stats, path)
+                stats["files"] += 1
+                if cleared:
+                    stats["dates"].add(fdate)
+                    store.log_file(con, path, fdate, None, "ok",
+                                   "generic:%s facts=0 (empty capture)" % source)
+                    if fdate in seen_dates:
+                        w = ("date %s fed by two files (%s then %s): later facts overwrite earlier "
+                             "ones (raw_ref keeps only the last); merge files or re-import deliberately"
+                             % (fdate, seen_dates[fdate], path))
                         stats["warnings"].append(w)
                         print("[import:%s] WARN %s" % (source, w), flush=True)
-                stats["dates"].add(fdate)
-                stats["files"] += 1
-                store.log_file(con, path, fdate, None, "ok",
-                               "generic:%s facts=0 (empty capture)" % source)
-                if fdate in seen_dates:
-                    w = ("date %s fed by two files (%s then %s): later facts overwrite earlier ones "
-                         "(raw_ref keeps only the last); merge files or re-import deliberately"
-                         % (fdate, seen_dates[fdate], path))
-                    stats["warnings"].append(w)
-                    print("[import:%s] WARN %s" % (source, w), flush=True)
-                else:
-                    seen_dates[fdate] = path
+                    else:
+                        seen_dates[fdate] = path
+                # refused: old facts and old batch kept; nothing recorded for this file
             else:
                 stats["warnings"].append(
                     "empty file with no filename date, nothing to record: %s"
@@ -456,11 +484,15 @@ def import_path(con, source, input_path, config=None, entity_column=None, verbos
                 num = _to_num(v)
                 text = v if isinstance(v, str) else str(v)
                 parsed.append((date, ent, str(k), num, text.strip()))
+        # Decide per date on the PARSED usable-fact count, not on records==[]: a
+        # file whose rows all carry null/absent fields also yields zero facts and
+        # must not silently delete a date's existing facts (Codex 2026-11-11).
+        n_new_by_date = {}
+        for (pd, _pe, _pk, _pn, _pt) in parsed:
+            n_new_by_date[pd] = n_new_by_date.get(pd, 0) + 1
         for d in sorted(file_dates):
-            if d not in cleared_dates:
-                con.execute("DELETE FROM generic_facts WHERE source=? AND observed_date=?",
-                            (source, d))
-                cleared_dates.add(d)
+            _apply_replace(con, source, d, n_new_by_date.get(d, 0), allow_empty_replace,
+                           cleared_dates, stats, path)
         wrote = 0
         for (date, ent, k, num, text) in parsed:
             con.execute(
@@ -800,7 +832,16 @@ def list_sources(con):
             resolved = (json.loads(r[1]) or {}).get("_resolved")
         except Exception:
             pass
+        # last_seen (from the facts table) misses a capture that imported nothing.
+        # Report the capture ledger's latest date separately so an empty latest
+        # capture is visible, not hidden behind the last date that had facts
+        # (Codex 2026-11-11).
+        cap = con.execute("SELECT MAX(observed_date) FROM capture_batches WHERE source=?",
+                          (r[0],)).fetchone()[0]
+        latest_capture = cap or r[3]
         out.append({"source": r[0], "first_seen": r[2], "last_seen": r[3],
+                    "latest_fact_date": r[3], "latest_capture_date": latest_capture,
+                    "latest_capture_empty": bool(latest_capture and r[3] and latest_capture > r[3]),
                     "entity_count": r[4], "field_count": r[5], "resolved": resolved})
     return out
 

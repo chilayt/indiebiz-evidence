@@ -26,7 +26,7 @@ class AcceptanceBase(unittest.TestCase):
         self.addCleanup(self.con.close)
         store.init_db(self.con)
 
-    def import_csv(self, source, snapshots, config=None):
+    def import_csv(self, source, snapshots, config=None, allow_empty_replace=False):
         folder = self.root / source
         folder.mkdir(exist_ok=True)
         for day, text in snapshots.items():
@@ -35,7 +35,8 @@ class AcceptanceBase(unittest.TestCase):
         if config:
             with (folder / "source.json").open("w", encoding="utf-8") as fh:
                 json.dump(config, fh)
-        return generic.import_path(self.con, source, str(folder), verbose=False)
+        return generic.import_path(self.con, source, str(folder), verbose=False,
+                                   allow_empty_replace=allow_empty_replace)
 
     def alerts(self, source):
         return self.con.execute(
@@ -61,12 +62,23 @@ class TestC03IdentityBoundary(AcceptanceBase):
         self.assertFalse([k for k in kinds if k.startswith("value_swing")],
                          "no price growth may be computed across an identity boundary")
 
-        diff = generic.diff_snapshots(self.con, source)
+        # Diff the window that actually CROSSES the boundary (03-01 -> 03-03). The
+        # default (last two dates) would not cross it. Field changes are nested under
+        # each entity's "changes"; the old assertion looked for "field" at the entity
+        # level and never ran (Codex 2026-11-11 caught the vacuous test).
+        diff = generic.diff_snapshots(self.con, source,
+                                      from_date="2099-03-01", to_date="2099-03-03")
+        self.assertEqual(diff["from"], "2099-03-01")
         self.assertEqual(diff["to"], "2099-03-03")
-        for change in diff.get("changed", []):
-            if change.get("field") == "price":
-                self.assertIsNone(change.get("delta_pct"),
-                                  "delta_pct must be null when the pair spans a boundary")
+        price_changes = [fc for ent in diff.get("changed", [])
+                         for fc in ent.get("changes", []) if fc.get("field") == "price"]
+        self.assertTrue(price_changes, "the price change across the boundary must be present")
+        for fc in price_changes:
+            self.assertIsNone(fc.get("delta_pct"),
+                              "delta_pct must be null when the window spans an identity boundary")
+        crossed = [ent for ent in diff.get("changed", []) if ent.get("across_identity_boundary")]
+        self.assertTrue(crossed, "the entity must be flagged as crossing an identity boundary")
+        self.assertIn("2099-03-02", crossed[0]["across_identity_boundary"])
 
 
 class TestC04GapSpan(AcceptanceBase):
@@ -114,12 +126,34 @@ class TestC05EmptySnapshot(AcceptanceBase):
     def test_c05b_reimport_as_empty_clears_old_facts(self):
         source = "c05b"
         self.import_csv(source, {"2099-06-01": "id,price\nA,10\nB,20\n"})
+        # DEFAULT: a zero-fact re-import of a date that has facts is REFUSED, because
+        # an empty export is usually a broken scraper. Old facts are kept (C-SPEC
+        # allows "clear OR explicitly refuse"; Codex 2026-11-11 chose refuse-by-default).
         stats = self.import_csv(source, {"2099-06-01": "id,price\n"})
         left = self.con.execute(
             "SELECT COUNT(*) FROM generic_facts WHERE source=?", (source,)).fetchone()[0]
-        self.assertEqual(left, 0, "re-importing the same date as empty must not keep old facts")
-        self.assertTrue(any("empty re-import" in w and "cleared" in w for w in stats["warnings"]),
-                        "clearing existing facts on an empty re-import must be warned, not silent")
+        self.assertEqual(left, 2, "default must refuse the destructive empty replace and keep facts")
+        self.assertEqual(stats["refused_empty_replace"], 1)
+        self.assertTrue(any("refused" in w for w in stats["warnings"]),
+                        "the refusal must be reported, not silent")
+        # EXPLICIT --allow-empty-replace: now the clear happens, and it is warned.
+        stats2 = self.import_csv(source, {"2099-06-01": "id,price\n"}, allow_empty_replace=True)
+        left2 = self.con.execute(
+            "SELECT COUNT(*) FROM generic_facts WHERE source=?", (source,)).fetchone()[0]
+        self.assertEqual(left2, 0, "with --allow-empty-replace the old facts are cleared")
+        self.assertTrue(any("cleared" in w for w in stats2["warnings"]),
+                        "the destructive clear must be warned, not silent")
+
+    def test_c05c_empty_latest_capture_visible_in_list_sources(self):
+        # A new empty capture must not hide behind the last date that had facts:
+        # list_sources must expose latest_capture_date separately (Codex 2026-11-11).
+        source = "c05c"
+        self.import_csv(source, {"2099-06-01": "id,price\nA,10\n"})
+        self.import_csv(source, {"2099-06-02": "id,price\n"})
+        info = {s["source"]: s for s in generic.list_sources(self.con)}[source]
+        self.assertEqual(info["latest_fact_date"], "2099-06-01")
+        self.assertEqual(info["latest_capture_date"], "2099-06-02")
+        self.assertTrue(info["latest_capture_empty"])
 
 
 class TestC06ReimportConsistency(AcceptanceBase):

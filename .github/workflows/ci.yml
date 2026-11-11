@@ -60,14 +60,31 @@ jobs:
           fi
           "$VPY" -m pip install --quiet dist/*.whl
           echo "VPY=$VPY" >> "$GITHUB_ENV"
-      - name: Run the installed CLI from outside the repository
+          if [ -f "$RUNNER_TEMP/ibe-venv/Scripts/indiebiz-evidence.exe" ]; then
+            IBECMD="$RUNNER_TEMP/ibe-venv/Scripts/indiebiz-evidence.exe"
+          else
+            IBECMD="$RUNNER_TEMP/ibe-venv/bin/indiebiz-evidence"
+          fi
+          echo "IBECMD=$IBECMD" >> "$GITHUB_ENV"
+      - name: Run the installed console script from outside the repository
         run: |
           mkdir -p "$RUNNER_TEMP/ibe-outside"
           cd "$RUNNER_TEMP/ibe-outside"
-          "$VPY" -m indiebiz_evidence.cli --version
-          "$VPY" -m indiebiz_evidence.cli demo --db demo.db
-          "$VPY" -m indiebiz_evidence.cli audit --db demo.db --source demo-prices
-          "$VPY" -m indiebiz_evidence.cli mcp --db demo.db --selftest
+          "$IBECMD" --version
+          "$IBECMD" demo --db demo.db
+          "$IBECMD" audit --db demo.db --source demo-prices
+          "$IBECMD" mcp --db demo.db --selftest
+      - name: Real stdio MCP handshake through the installed entry point
+        run: |
+          cd "$RUNNER_TEMP/ibe-outside"
+          printf '%s\n' \
+            '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"0"}}}' \
+            '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+            '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"list_sources","arguments":{}}}' \
+            | "$IBECMD" mcp --db demo.db > mcp_out.jsonl
+          grep -q '"protocolVersion"' mcp_out.jsonl
+          grep -q 'demo-prices' mcp_out.jsonl
+          echo "stdio handshake OK"
       - name: Installed metadata declares no runtime dependencies
         run: |
           "$VPY" - <<'PY'
