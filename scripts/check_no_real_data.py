@@ -27,7 +27,7 @@ BLOCKED_EXT = (".db", ".db-wal", ".db-shm", ".sqlite", ".sqlite3", ".csv", ".jso
 # Everything under tests/fixtures is synthetic by policy (see CONTRIBUTING.md):
 # invented entities, year 2099, never real exports. Any new fixture directory must
 # live there; that is the only place data-shaped files are allowed.
-ALLOWED_PREFIX = "tests/fixtures/"
+ALLOWED_PREFIXES = ("tests/fixtures/", "src/indiebiz_evidence/demo_data/")
 
 # Content markers: a real export pasted into an otherwise innocent file.
 MARKERS = ("tmrr_", "Authorization: Bearer ", "-----BEGIN PRIVATE KEY-----",
@@ -76,7 +76,7 @@ def staged_files():
 
 def problems_for(path):
     rel = path.replace("\\", "/")
-    if rel.startswith(ALLOWED_PREFIX):
+    if rel.startswith(ALLOWED_PREFIXES):
         return []
     if any(rel.startswith(d) or ("/" + d) in ("/" + rel) for d in BLOCKED_DIRS):
         return ["lives in a data directory"]
@@ -105,7 +105,7 @@ def _main(argv=None):
             problems.append((f, why))
     # content markers, only for text-ish files that exist
     for f in files:
-        if f == SELF or f.startswith(ALLOWED_PREFIX):
+        if f == SELF or f.startswith(ALLOWED_PREFIXES):
             continue
         if not os.path.exists(os.path.join(ROOT, f)):
             continue

@@ -14,7 +14,7 @@
   - C08 源隔离与错误：`shop`/`workshop` 时间轴独立；未抓取日期明确报错
 - **变异测试验证有效性**：禁用边界检查、伪造跨度、不清理旧事实、退回 replace 解码、
   允许未抓取日期——五个变异**全部被杀死**
-- 测试 120 / 0 skip（含 2 个 expectedFailure）
+- 测试 125 / 0 skip（含 2 个 expectedFailure）
 
 ## v0.5.2 (2026-11-10)
 - **独立合成验收 C01/C02 落地**（按冻结的 `docs/acceptance/C-SPEC.md`）

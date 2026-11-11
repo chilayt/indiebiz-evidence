@@ -4,12 +4,20 @@ on:
   push:
   pull_request:
 
+env:
+  PYTHONIOENCODING: utf-8
+
 jobs:
   test:
-    runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ["3.9", "3.12"]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -23,8 +31,42 @@ jobs:
         run: python scripts/mcp_server.py --db "$RUNNER_TEMP/demo.db" --selftest
       - name: Documented health-report command must run
         run: python scripts/audit_source.py --db "$RUNNER_TEMP/demo.db" --source demo-prices
-      - name: Install and confirm the package declares no runtime dependencies
+
+  install-acceptance:
+    # Codex: the old smoke only imported the package. This proves the first-success
+    # path works after `pip install`, from OUTSIDE the repository, on every OS.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build the wheel
+        run: python -m pip wheel . --no-deps -w dist
+      - name: Install into a fresh venv
         run: |
-          pip install .
-          python -c "import tempfile, os; from indiebiz_evidence import store; p=os.path.join(tempfile.mkdtemp(), 't.db'); con=store.connect(p); store.init_db(con); print('install smoke ok')"
-          python scripts/check_no_runtime_deps.py --installed
+          python -m venv "$RUNNER_TEMP/ibe-venv"
+          if [ -f "$RUNNER_TEMP/ibe-venv/Scripts/python.exe" ]; then
+            VPY="$RUNNER_TEMP/ibe-venv/Scripts/python.exe"
+          else
+            VPY="$RUNNER_TEMP/ibe-venv/bin/python"
+          fi
+          "$VPY" -m pip install --quiet dist/*.whl
+          echo "VPY=$VPY" >> "$GITHUB_ENV"
+      - name: Run the installed CLI from outside the repository
+        run: |
+          mkdir -p "$RUNNER_TEMP/ibe-outside"
+          cd "$RUNNER_TEMP/ibe-outside"
+          "$VPY" -m indiebiz_evidence.cli --version
+          "$VPY" -m indiebiz_evidence.cli demo --db demo.db
+          "$VPY" -m indiebiz_evidence.cli audit --db demo.db --source demo-prices
+          "$VPY" -m indiebiz_evidence.cli mcp --db demo.db --selftest
+      - name: Installed metadata declares no runtime dependencies
+        run: "$VPY" -c "from importlib.metadata import requires; r=requires('indiebiz-evidence') or []; assert not [x for x in r if 'extra ==' not in x], r; print('no runtime deps OK')"

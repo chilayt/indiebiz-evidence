@@ -5,6 +5,9 @@ engine, including every MCP tool, in under a minute.
 Purpose 2 (CI): the end-to-end MCP tests run against this database on a clean
 clone, so no test is ever silently skipped.
 
+The fixtures ship INSIDE the package (demo_data/), so this works after
+`pip install` from any directory -- not only from a repository checkout.
+
 Contains ONLY invented entities in year 2099 -- impossible to confuse with a real
 capture. No upstream data of any kind.
 """
@@ -14,8 +17,8 @@ import os
 
 from . import generic, store
 
-_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-DEMO_ROOT = os.path.join(_PROJECT_ROOT, "tests", "fixtures", "demo")
+# package-relative: works from a checkout AND from site-packages
+DEMO_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "demo_data")
 GENERIC_ROOT = os.path.join(DEMO_ROOT, "generic")
 
 

@@ -1,0 +1,15 @@
+{
+ "entity_column": "product",
+ "monotonic_fields": [
+  "cumulative_units"
+ ],
+ "identity_fields": [
+  "owner"
+ ],
+ "timestamp_fields": [
+  "updated_at"
+ ],
+ "swing_threshold": 0.3,
+ "min_presence_days": 1,
+ "stale_hours": 48
+}

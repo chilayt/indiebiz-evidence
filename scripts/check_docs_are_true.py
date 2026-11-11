@@ -18,6 +18,7 @@ import json
 import os
 import argparse
 import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -117,7 +118,12 @@ def _run_doc_command(doc, script_name, subs, extra_db=None, tmp=None):
     cmd = _doc_command(doc, script_name)
     for old, new in subs.items():
         cmd = cmd.replace(old, new)
-    parts = cmd.split()
+    # posix=False keeps Windows backslashes intact (posix=True treats them as
+    # escapes and silently mangles I:\tools\... into I:tools...). It still groups
+    # quoted paths with spaces; strip the surrounding quotes afterwards.
+    parts = shlex.split(cmd, posix=False)
+    parts = [p[1:-1] if len(p) >= 2 and p[0] == p[-1] and p[0] in "\"'" else p
+             for p in parts]
     if parts and parts[0] == "python":
         parts[0] = sys.executable
     rc, out = _run(parts, ROOT)
