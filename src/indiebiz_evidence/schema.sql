@@ -1,6 +1,6 @@
 -- indiebiz-evidence (core) schema.
 -- Generic engine only: any periodic snapshot source lands in generic_facts.
--- The TrustMRR vertical tables live in a separate private layer.
+-- Vertical-specific tables, if any, live in a separate private layer, not in this package.
 PRAGMA user_version = 3;
 
 -- Anomaly rows. slug is '<source>:<entity>' for generic sources; the source-level
