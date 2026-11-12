@@ -73,6 +73,41 @@ def _cmd_audit(a):
     return reporting.main(["--db", a.db] + (["--source", a.source] if a.source else []))
 
 
+def _cmd_crosscheck(a):
+    reporting.utf8_stdio()
+    db = os.path.abspath(a.db)
+    if not os.path.exists(db):
+        print("evidence db not found: %s" % db)
+        return 1
+    con = store.connect(db)
+    res = generic.cross_check(con, a.entity, field=a.field, date=a.date)
+    con.close()
+    if res is None:
+        print("entity is empty after normalization")
+        return 1
+    if not res["sources_compared"]:
+        print("no source reports an entity matching %r" % a.entity)
+        return 1
+    print("== 跨源核对 %s ==" % a.entity)
+    print("对比来源：%s" % ", ".join(res["sources_compared"]))
+    print()
+    label = {"agrees": "一致", "differs": "打架", "single_source": "孤证"}
+    for fld, e in res["fields"].items():
+        print("  %-16s [%s] %d 个来源报告" % (fld, label.get(e["verdict"], e["verdict"]), e["reported_by"]))
+        for v in e["values"]:
+            shown = v["num"] if v["num"] is not None else v["text"]
+            srcs = ", ".join(s["source"] for s in v["sources"])
+            print("      = %-14s 来自 %s" % (shown, srcs))
+        if e.get("not_reporting"):
+            print("      未报告：%s（缺席≠0）" % ", ".join(e["not_reporting"]))
+        if e.get("note"):
+            print("      -> %s" % e["note"])
+    print()
+    for cv in res["caveats"]:
+        print("  注意：%s" % cv)
+    return 0
+
+
 def _cmd_mcp(a):
     from . import mcp_server
     if a.selftest:
@@ -106,6 +141,13 @@ def main(argv=None):
     p.add_argument("--db", default="data/evidence.db")
     p.add_argument("--source", default=None)
     p.set_defaults(fn=_cmd_audit)
+
+    p = sub.add_parser("crosscheck", help="verify one claim across every source that reports it")
+    p.add_argument("--db", default="data/evidence.db")
+    p.add_argument("--entity", required=True)
+    p.add_argument("--field", default=None)
+    p.add_argument("--date", default=None)
+    p.set_defaults(fn=_cmd_crosscheck)
 
     p = sub.add_parser("mcp", help="run the stdio MCP server (or --selftest)")
     p.add_argument("--db", default="data/evidence.db")

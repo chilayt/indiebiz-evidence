@@ -1613,3 +1613,90 @@ def resolve_entities(con, query, limit=20):
             "note": ("matches are name-based only. Two ids that normalize the same "
                      "may be different things; two that look different may be the "
                      "same thing. Treat this as a lead, not a join.")}
+
+
+def cross_check(con, entity, field=None, date=None):
+    """Cross-verify one entity's values across every source that reports it.
+
+    A single source handing you a number is not verification. When several
+    sources report the same thing, the question is whether they AGREE. This puts
+    the values side by side, with provenance, and labels each field:
+      agrees        - multiple sources report the same value (corroborated)
+      differs       - sources report different values (needs investigation)
+      single_source - only one source reports it (a lone claim, not cross-verified)
+
+    Disciplines kept:
+      - Name matching is a LEAD, not a join (same caveat as resolve_entities);
+        only exact-normalized matches are compared, never fuzzy ones.
+      - A matching field name does NOT guarantee a matching caliber or unit
+        (one source's "revenue" may be GMV, another's net). Values are shown for
+        a human to judge; nothing is auto-declared right or wrong.
+      - Each source's value carries its capture date and raw_ref, so a temporal
+        or provenance difference is visible, not hidden.
+      - Absent is not zero: a source that does not report the field is listed as
+        not reporting it, never as reporting 0.
+    """
+    qn = normalize_entity(entity)
+    if not qn:
+        return None
+    pairs = con.execute("SELECT DISTINCT source, entity FROM generic_facts").fetchall()
+    matched = [(s, e) for s, e in pairs if normalize_entity(e) == qn]
+    if not matched:
+        return {"entity_query": entity, "normalized": qn, "sources_compared": [],
+                "fields": {}, "note": "no source reports an entity that normalizes to this name"}
+    per_source = []
+    for s, e in sorted(matched):
+        snap = entity_snapshot(con, s, e, date)
+        if snap is None:
+            continue
+        per_source.append({"source": s, "entity": e, "date": snap["date"],
+                           "fields": snap["fields"], "raw_ref": snap.get("raw_ref")})
+    if not per_source:
+        return {"entity_query": entity, "normalized": qn, "sources_compared": [],
+                "fields": {}, "note": "entity found but no snapshot at the requested date"}
+    all_fields = sorted({f for ps in per_source for f in ps["fields"]})
+    if field is not None:
+        all_fields = [f for f in all_fields if f == field]
+    dates = {ps["date"] for ps in per_source}
+    out_fields = {}
+    for fld in all_fields:
+        groups = {}
+        not_reporting = []
+        for ps in per_source:
+            cell = ps["fields"].get(fld)
+            if cell is None:
+                not_reporting.append(ps["source"])
+                continue
+            num, text = cell.get("num"), cell.get("text")
+            key = ("n", round(num, 10)) if num is not None else ("t", text)
+            g = groups.setdefault(key, {"num": num, "text": text, "sources": []})
+            g["sources"].append({"source": ps["source"], "entity": ps["entity"],
+                                 "date": ps["date"]})
+        reporting = len(per_source) - len(not_reporting)
+        if reporting <= 1:
+            verdict = "single_source"
+        elif len(groups) == 1:
+            verdict = "agrees"
+        else:
+            verdict = "differs"
+        entry = {"reported_by": reporting,
+                 "values": [{"num": g["num"], "text": g["text"], "sources": g["sources"]}
+                            for g in groups.values()],
+                 "verdict": verdict}
+        if not_reporting:
+            entry["not_reporting"] = not_reporting
+        if verdict == "differs":
+            entry["note"] = ("sources disagree -- before concluding one is wrong, check that "
+                             "they use the same caliber/unit and capture date; values are "
+                             "shown with provenance for you to judge")
+        elif verdict == "single_source":
+            entry["note"] = "only one source reports this; it is a lone claim, not cross-verified"
+        out_fields[fld] = entry
+    caveats = ["name match is a lead, not a join; only exact-normalized matches were compared",
+               "matching field names do not guarantee matching caliber or unit"]
+    if len(dates) > 1:
+        caveats.append("sources were captured on different dates (%s); a value difference may "
+                       "be a time difference, not a disagreement" % ", ".join(sorted(dates)))
+    return {"entity_query": entity, "normalized": qn,
+            "sources_compared": [ps["source"] for ps in per_source],
+            "fields": out_fields, "caveats": caveats}

@@ -170,6 +170,22 @@ TOOL_SCHEMAS = [
         },
     },
     {
+        "name": "cross_check",
+        "title": "Verify one claim across every source that reports it",
+        "description": "Cross-verify an entity's values across all sources: per field, "
+                       "labels it agrees (corroborated), differs (sources disagree -- values "
+                       "and provenance shown for you to judge) or single_source (a lone "
+                       "claim). A single source is not verification. Matching field names "
+                       "do NOT guarantee matching caliber/unit; absent is never zero. Use "
+                       "this before presenting a collected value as a confirmed answer.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"entity": dict(_S), "field": dict(_S), "date": dict(_S)},
+            "required": ["entity"],
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "list_source_anomalies",
         "title": "Detected anomalies",
         "description": "Anomalies for a source: credential/timestamp staleness, value "
@@ -350,6 +366,19 @@ def tool_resolve_entities(con, args):
     return res
 
 
+def tool_cross_check(con, args):
+    ent = args.get("entity")
+    if not ent:
+        return {"error": "entity is required"}
+    res = G.cross_check(con, ent, field=args.get("field"), date=args.get("date"))
+    if res is None:
+        return {"error": "entity is empty after normalization"}
+    if not res["sources_compared"]:
+        res["hint"] = ("no source reports this entity; run resolve_entities to find how it is "
+                       "spelled across sources, or list_sources to see what is loaded")
+    return res
+
+
 def tool_list_source_anomalies(con, args):
     conds, params = [], []
     if args.get("kind"):
@@ -389,6 +418,7 @@ TOOL_FUNCS = {
     "list_entities": tool_list_entities,
     "find_duplicate_entities": tool_find_duplicate_entities,
     "resolve_entities": tool_resolve_entities,
+    "cross_check": tool_cross_check,
     "list_source_anomalies": tool_list_source_anomalies,
 }
 
@@ -556,6 +586,7 @@ def selftest(db_path: str):
     if ent and fld:
         samples.append(("query_series", {"source": src, "entity": ent, "field": fld}))
     samples.append(("resolve_entities", {"q": ent or src}))
+    samples.append(("cross_check", {"entity": ent or src}))
     ok = True
     n_ok = n_errpath = n_err = 0
     for name, args in samples:
