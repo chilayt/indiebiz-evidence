@@ -1,5 +1,7 @@
 # indiebiz-evidence
 
+<!-- mcp-name: io.github.chilayt/indiebiz-evidence -->
+
 > **English** — You collect information from several sources. Before you present a number
 > as "the answer", you need to know: do the sources agree? Can you trace it back to the raw
 > file? Is it even still being reported? indiebiz-evidence is a local, zero-dependency
@@ -66,6 +68,9 @@ indiebiz-evidence crosscheck --db data/my.db --entity "Acme Widget"
 
 每条观测都带自己的原文、抓取日和 `raw_ref` 能回溯；某源没报的字段记为"未报告"，**不是 0**。名字匹配只是线索，
 字段同名也不代表同口径——所以它**摆证据给你判断，不替你宣判谁对谁错**。
+
+**一个 30 秒的真实感示例**（三源抓价，揪出小数点错误/悄悄丢列/孤证）：
+[examples/cross_check_prices](examples/cross_check_prices/README.md)，`python examples/cross_check_prices/run_example.py` 直接跑。
 
 更完整的四天踩坑教程见 [**docs/QUICKSTART-COLLECTOR.md**](docs/QUICKSTART-COLLECTOR.md)，
 **每一段输出都是照抄实跑结果**（CI 机制保证它不会漂移）。仓库内也可用

@@ -5,11 +5,32 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "indiebiz-evidence"
 version = "0.6.1"
-description = "Auditable evidence layer for your own periodic captures: CSV/JSON import, anomaly detection, and an MCP server your agent can query"
+description = "Cross-check collected information across sources before calling it an answer: provenance, agreement, anomalies, and a zero-dependency MCP server"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.11"
 dependencies = []
+keywords = ["mcp", "mcp-server", "data-quality", "verification", "provenance", "cross-check", "evidence", "anomaly-detection", "data-collection", "sqlite"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Database",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+]
+
+[project.urls]
+Homepage = "https://github.com/chilayt/indiebiz-evidence"
+Repository = "https://github.com/chilayt/indiebiz-evidence"
+Issues = "https://github.com/chilayt/indiebiz-evidence/issues"
+Changelog = "https://github.com/chilayt/indiebiz-evidence/blob/main/CHANGELOG.md"
 
 [project.scripts]
 indiebiz-evidence = "indiebiz_evidence.cli:main"

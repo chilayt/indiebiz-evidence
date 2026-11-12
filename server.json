@@ -1,0 +1,25 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.chilayt/indiebiz-evidence",
+  "title": "indiebiz-evidence",
+  "description": "Cross-check collected information across sources before calling it an answer. Puts each source's value side by side with provenance (source, date, original text, raw_ref) and labels agreement, disagreement, or lone claims. Zero runtime dependencies; local SQLite; stdio MCP server.",
+  "version": "0.6.1",
+  "repository": {
+    "source": "github",
+    "url": "https://github.com/chilayt/indiebiz-evidence"
+  },
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "indiebiz-evidence",
+      "version": "0.6.1",
+      "runtimeHint": "uvx",
+      "packageArguments": [
+        "mcp"
+      ],
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}
