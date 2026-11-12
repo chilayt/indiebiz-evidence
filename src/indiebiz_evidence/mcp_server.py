@@ -171,13 +171,17 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "cross_check",
-        "title": "Verify one claim across every source that reports it",
-        "description": "Cross-verify an entity's values across all sources: per field, "
-                       "labels it agrees (corroborated), differs (sources disagree -- values "
-                       "and provenance shown for you to judge) or single_source (a lone "
-                       "claim). A single source is not verification. Matching field names "
-                       "do NOT guarantee matching caliber/unit; absent is never zero. Use "
-                       "this before presenting a collected value as a confirmed answer.",
+        "title": "Cross-check one claim across every source that reports it",
+        "description": "Put each source's reported value for an entity side by side, with "
+                       "provenance (source, capture date, original text, raw_ref). Per field "
+                       "labels it agrees (same value AND text across distinct sources), "
+                       "numbers_match (parsed numbers equal but text differs -- caliber NOT "
+                       "confirmed, not corroboration), differs, or single_source (a lone "
+                       "claim). Counts DISTINCT sources: two spellings in one source are "
+                       "identity ambiguity, not corroboration. Equal values are not proof of "
+                       "truth; matching field names do not guarantee matching caliber; absent "
+                       "is never zero. Use this to find disagreements and verification gaps "
+                       "before presenting a collected value as an answer.",
         "inputSchema": {
             "type": "object",
             "properties": {"entity": dict(_S), "field": dict(_S), "date": dict(_S)},

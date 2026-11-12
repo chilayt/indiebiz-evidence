@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "indiebiz-evidence"
-version = "0.6.0"
+version = "0.6.1"
 description = "Auditable evidence layer for your own periodic captures: CSV/JSON import, anomaly detection, and an MCP server your agent can query"
 readme = "README.md"
 license = { text = "MIT" }

@@ -5,13 +5,13 @@
 > file? Is it even still being reported? indiebiz-evidence is a local, zero-dependency
 > evidence layer that **cross-checks what you collected** — agreement across sources,
 > provenance, and anomalies — so you verify before you conclude. It does not collect for
-> you; it makes what you collected trustworthy. Point it at dated CSV/JSON exports and query
+> you; it helps you verify what you collected — equal values are not proof of truth. Point it at dated CSV/JSON exports and query
 > it from the CLI or a zero-dependency MCP server your agent can call.
 
 你从好几个来源收集信息。但在把一个数字当成"答案"给出去之前，你得先知道：**这几个来源说的
 一致吗？能不能回溯到原始文件？它现在还在被报告吗？** indiebiz-evidence 是一个本地、零依赖的
 证据层，把你收集到的东西**交叉复核**——多源是否一致、出处可回溯、异常先声明——让你**先核实，
-再下结论**。它不替你采集，它让你采到的东西可信。指向按日期命名的 CSV/JSON 导出即可，CLI 或
+再下结论**。它不替你采集，它帮你**核实**采到的东西——值相同不等于事实已核实。指向按日期命名的 CSV/JSON 导出即可，CLI 或
 零依赖 MCP Server 供你的 agent 调用。
 
 ## 它解决的不是"抓不到"，是"没复核就当成正确答案"
@@ -60,11 +60,11 @@ indiebiz-evidence crosscheck --db data/my.db --entity "Acme Widget"
 
 它会把 `Acme Widget` 在 site-a / site-b 的每个字段摆到一起，告诉你：
 
-- **一致**：几个来源说的相同 → 有佐证，可信度高；
+- **一致**：几个来源说的相同（值与原文都一致）→ 有佐证，但仍需确认实体/口径/时效/来源独立；
 - **打架**：来源之间不同 → 列出各自的值和出处，**先查是不是口径/单位/抓取日期不同，再下结论**；
 - **孤证**：只有一个来源报告 → 没法交叉验证，别当成已核实。
 
-每条都带 `raw_ref` 能回溯原文；某源没报的字段记为"未报告"，**不是 0**。名字匹配只是线索，
+每条观测都带自己的原文、抓取日和 `raw_ref` 能回溯；某源没报的字段记为"未报告"，**不是 0**。名字匹配只是线索，
 字段同名也不代表同口径——所以它**摆证据给你判断，不替你宣判谁对谁错**。
 
 更完整的四天踩坑教程见 [**docs/QUICKSTART-COLLECTOR.md**](docs/QUICKSTART-COLLECTOR.md)，
@@ -124,7 +124,7 @@ MCP server 走 stdio。在宿主（Claude Desktop、Codex 等）的配置里加�
 
 ## 成熟度
 
-**v0.5.x 是实验性版本**。已用：合成回归矩阵（13 场景）、134 项测试、文档真值检查。
+**v0.5.x 是实验性版本**。已用：合成回归矩阵（13 场景）、138 项测试、文档真值检查。
 **未用真实语料验证精度**——这条缺口写在 [COMPLIANCE.md](COMPLIANCE.md) §六，不藏着。
 适用场景：本地、受信任输入、单机使用。不承诺处理任意规模或敌意输入。
 
@@ -132,7 +132,7 @@ MCP server 走 stdio。在宿主（Claude Desktop、Codex 等）的配置里加�
 
 ```bash
 pip install .                          # 零运行时依赖，装出 indiebiz-evidence 命令
-python scripts/run_release_gate.py     # 五道门禁单一入口（134 tests，跳过=失败；CI 同款）
+python scripts/run_release_gate.py     # 五道门禁单一入口（138 tests，跳过=失败；CI 同款）
 ```
 
 ## 数据与隐私

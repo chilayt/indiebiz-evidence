@@ -1618,23 +1618,27 @@ def resolve_entities(con, query, limit=20):
 def cross_check(con, entity, field=None, date=None):
     """Cross-verify one entity's values across every source that reports it.
 
-    A single source handing you a number is not verification. When several
-    sources report the same thing, the question is whether they AGREE. This puts
-    the values side by side, with provenance, and labels each field:
-      agrees        - multiple sources report the same value (corroborated)
-      differs       - sources report different values (needs investigation)
-      single_source - only one source reports it (a lone claim, not cross-verified)
+    A single source handing you a number is not verification. This puts each
+    source's reported value side by side WITH provenance (source, capture date,
+    original text, raw_ref) and labels each field:
+      agrees        - several distinct sources report the same value AND text
+      numbers_match - parsed numbers equal but original text differs; caliber/unit
+                      is NOT confirmed, so this is not corroboration
+      differs       - sources report different values
+      single_source - only one distinct source reports it (a lone claim)
 
-    Disciplines kept:
-      - Name matching is a LEAD, not a join (same caveat as resolve_entities);
-        only exact-normalized matches are compared, never fuzzy ones.
-      - A matching field name does NOT guarantee a matching caliber or unit
-        (one source's "revenue" may be GMV, another's net). Values are shown for
-        a human to judge; nothing is auto-declared right or wrong.
-      - Each source's value carries its capture date and raw_ref, so a temporal
-        or provenance difference is visible, not hidden.
-      - Absent is not zero: a source that does not report the field is listed as
-        not reporting it, never as reporting 0.
+    Disciplines (Codex review 2026-11-12):
+      - Count DISTINCT sources. Two spellings of the same entity inside ONE source
+        are identity ambiguity, never corroboration.
+      - Every observation keeps its own original text and raw_ref; grouping never
+        folds one source's text into another's.
+      - Numeric equality is exact on the stored value (no rounding tolerance);
+        approximate comparison would need an explicit unit/tolerance config.
+      - A value is only "current" if the entity is still reported at the source's
+        latest capture; a stale last-report is flagged, not passed off as current.
+      - Name match is a lead, not a join; matching field names do not guarantee
+        matching caliber. Values are shown for a human to judge, never auto-declared
+        right or wrong. Absent is never zero.
     """
     qn = normalize_entity(entity)
     if not qn:
@@ -1644,59 +1648,104 @@ def cross_check(con, entity, field=None, date=None):
     if not matched:
         return {"entity_query": entity, "normalized": qn, "sources_compared": [],
                 "fields": {}, "note": "no source reports an entity that normalizes to this name"}
-    per_source = []
-    for s, e in sorted(matched):
-        snap = entity_snapshot(con, s, e, date)
-        if snap is None:
-            continue
-        per_source.append({"source": s, "entity": e, "date": snap["date"],
-                           "fields": snap["fields"], "raw_ref": snap.get("raw_ref")})
-    if not per_source:
-        return {"entity_query": entity, "normalized": qn, "sources_compared": [],
-                "fields": {}, "note": "entity found but no snapshot at the requested date"}
-    all_fields = sorted({f for ps in per_source for f in ps["fields"]})
-    if field is not None:
-        all_fields = [f for f in all_fields if f == field]
-    dates = {ps["date"] for ps in per_source}
+    candidates_by_source = {}
+    for s, e in matched:
+        candidates_by_source.setdefault(s, []).append(e)
+
+    def latest_capture(s):
+        r = con.execute("SELECT MAX(observed_date) FROM capture_batches WHERE source=?",
+                        (s,)).fetchone()[0]
+        if r:
+            return r
+        return con.execute("SELECT MAX(observed_date) FROM generic_facts WHERE source=?",
+                           (s,)).fetchone()[0]
+
+    observations = []
+    source_status = {}
+    for s in sorted(candidates_by_source):
+        cap = latest_capture(s)
+        ents = sorted(candidates_by_source[s])
+        last_rep = None
+        for e in ents:
+            d = date
+            if not d:
+                d = con.execute("SELECT MAX(observed_date) FROM generic_facts "
+                                "WHERE source=? AND entity=?", (s, e)).fetchone()[0]
+            if not d:
+                continue
+            last_rep = max(last_rep, d) if last_rep else d
+            rows = con.execute("SELECT field, num, text, raw_ref FROM generic_facts "
+                               "WHERE source=? AND entity=? AND observed_date=?",
+                               (s, e, d)).fetchall()
+            for fld, num, text, ref in rows:
+                if field is not None and fld != field:
+                    continue
+                observations.append({"source": s, "entity": e, "field": fld, "date": d,
+                                     "num": num, "text": text, "raw_ref": ref})
+        source_status[s] = {"latest_capture_date": cap, "entity_last_reported": last_rep,
+                            "currently_reported": bool(last_rep and cap and last_rep >= cap),
+                            "candidates": ents}
+    identity_ambiguity = {s: c for s, c in candidates_by_source.items() if len(c) > 1}
+    reporting_sources = sorted({o["source"] for o in observations})
+    all_fields = sorted({o["field"] for o in observations})
     out_fields = {}
     for fld in all_fields:
+        obs = [o for o in observations if o["field"] == fld]
         groups = {}
-        not_reporting = []
-        for ps in per_source:
-            cell = ps["fields"].get(fld)
-            if cell is None:
-                not_reporting.append(ps["source"])
-                continue
-            num, text = cell.get("num"), cell.get("text")
-            key = ("n", round(num, 10)) if num is not None else ("t", text)
-            g = groups.setdefault(key, {"num": num, "text": text, "sources": []})
-            g["sources"].append({"source": ps["source"], "entity": ps["entity"],
-                                 "date": ps["date"]})
-        reporting = len(per_source) - len(not_reporting)
-        if reporting <= 1:
+        for o in obs:
+            key = ("n", o["num"]) if o["num"] is not None else ("t", o["text"])
+            groups.setdefault(key, []).append(o)
+        srcs = sorted({o["source"] for o in obs})
+        not_reporting = sorted(set(candidates_by_source) - set(srcs))
+        if len(srcs) <= 1:
             verdict = "single_source"
-        elif len(groups) == 1:
-            verdict = "agrees"
-        else:
+        elif len(groups) > 1:
             verdict = "differs"
-        entry = {"reported_by": reporting,
-                 "values": [{"num": g["num"], "text": g["text"], "sources": g["sources"]}
-                            for g in groups.values()],
-                 "verdict": verdict}
+        else:
+            texts = {o["text"] for o in obs}
+            verdict = "agrees" if len(texts) == 1 else "numbers_match"
+        entry = {"reported_by": len(srcs), "verdict": verdict,
+                 "values": [{"num": g[0]["num"], "observations": g} for g in groups.values()]}
         if not_reporting:
             entry["not_reporting"] = not_reporting
         if verdict == "differs":
-            entry["note"] = ("sources disagree -- before concluding one is wrong, check that "
-                             "they use the same caliber/unit and capture date; values are "
-                             "shown with provenance for you to judge")
+            entry["note"] = ("sources disagree -- before concluding one is wrong, check caliber/unit "
+                             "and capture date; each value keeps its own text and raw_ref")
+        elif verdict == "numbers_match":
+            entry["note"] = ("parsed numbers are equal but the original text differs; caliber/unit is "
+                             "NOT confirmed, so this is not corroboration")
         elif verdict == "single_source":
-            entry["note"] = "only one source reports this; it is a lone claim, not cross-verified"
+            entry["note"] = "only one distinct source reports this; a lone claim, not cross-verified"
         out_fields[fld] = entry
+    ident_anoms = []
+    for s, e in matched:
+        slug = s + ":" + e
+        for a in con.execute("SELECT observed_date, kind, detail FROM anomalies "
+                             "WHERE slug=? AND kind LIKE 'identity_change:%'", (slug,)):
+            ident_anoms.append({"source": s, "entity": e, "observed_date": a[0],
+                                "kind": a[1], "detail": a[2]})
     caveats = ["name match is a lead, not a join; only exact-normalized matches were compared",
-               "matching field names do not guarantee matching caliber or unit"]
+               "matching field names do not guarantee matching caliber or unit",
+               "equal values are not proof of truth: confirm entity, caliber, timeliness and "
+               "that the sources are independent (two sites may reprint the same error)"]
+    if identity_ambiguity:
+        caveats.append("identity ambiguity: one source has several spellings that normalize the "
+                       "same (%s); they are counted as ONE source, not corroboration"
+                       % "; ".join("%s=%s" % (s, ",".join(c)) for s, c in identity_ambiguity.items()))
+    stale = [s for s, st in source_status.items() if not st["currently_reported"]]
+    if stale:
+        caveats.append("not currently reported at the source's latest capture: %s -- shown values "
+                       "are the last report, not a current one" % ", ".join(stale))
+    dates = {o["date"] for o in observations}
     if len(dates) > 1:
-        caveats.append("sources were captured on different dates (%s); a value difference may "
-                       "be a time difference, not a disagreement" % ", ".join(sorted(dates)))
+        caveats.append("observations span different dates (%s); a difference may be time, not disagreement"
+                       % ", ".join(sorted(dates)))
+    if ident_anoms:
+        caveats.append("identity-change anomalies exist for this entity; do not read values across "
+                       "an identity boundary as comparable")
     return {"entity_query": entity, "normalized": qn,
-            "sources_compared": [ps["source"] for ps in per_source],
-            "fields": out_fields, "caveats": caveats}
+            "sources_compared": reporting_sources,
+            "candidate_sources": sorted(candidates_by_source),
+            "source_status": source_status,
+            "identity_ambiguity": identity_ambiguity,
+            "fields": out_fields, "identity_anomalies": ident_anoms, "caveats": caveats}
