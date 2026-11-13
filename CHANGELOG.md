@@ -2,6 +2,17 @@
 
 版本史摘要。
 
+## v0.8.0 (2026-11-13)
+- **新增跨源实体对齐（entity_links）**——三方评审认定的"唯一值得新增的功能"，把跨源对齐从"每次手工重做"变成"做一次、存下来"：
+  - `entity_links` 表（source+entity→canonical_id，存 decided_by/decided_at/evidence）。
+  - `propose_entity_links`：跨源同名/近名候选 + 逐字段一致/冲突证据，**绝不自动连**。
+  - `confirm_entity_link`：**人工确认**才建链（唯一建链方式），拒绝幻影实体/空 canonical_id。
+  - `cross_check` 加 `canonical_id` 可选参数：用已确认对齐跨源比较，不再依赖名字恰好一致。
+  - `list_entity_links`：按 canonical_id 分组查看。
+  - 纪律不变：合并在人手里，工具只记住人的判断；候选不是结论。
+- MCP 工具 12 → 15；新增 tests/test_entity_links.py 10 例（候选不自动连/确认存储/幻影拒绝/canonical 跨源异名/重确认替换），变异验证。
+- 测试 158 / 0 skip
+
 ## v0.7.1 (2026-11-13)
 - **按三方评审（Codex/Qoder/MiniMax）修分发断点与合规泄漏**：
   - **P0 合规泄漏**：v0.7.0 changelog 曾含上游平台名+真实匿名 slug+数值，已匿名化；COMPLIANCE 主动声明 commit message 残留；数据守卫新增上游名/真实实体文本扫描（负向测试验证可拦）。

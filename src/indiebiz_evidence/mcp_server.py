@@ -181,11 +181,55 @@ TOOL_SCHEMAS = [
                        "identity ambiguity, not corroboration. Equal values are not proof of "
                        "truth; matching field names do not guarantee matching caliber; absent "
                        "is never zero. Use this to find disagreements and verification gaps "
-                       "before presenting a collected value as an answer.",
+                       "before presenting a collected value as an answer. Pass canonical_id to "
+                       "compare a CONFIRMED cross-source alignment (from confirm_entity_link) "
+                       "instead of a name match.",
         "inputSchema": {
             "type": "object",
-            "properties": {"entity": dict(_S), "field": dict(_S), "date": dict(_S)},
-            "required": ["entity"],
+            "properties": {"entity": dict(_S), "field": dict(_S), "date": dict(_S),
+                           "canonical_id": dict(_S)},
+            "required": [],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "propose_entity_links",
+        "title": "Propose cross-source entity alignments (candidates only)",
+        "description": "Find entities across sources whose normalized name matches q, show each "
+                       "candidate's latest field values and per-field agreement/conflict as evidence. "
+                       "NOTHING is linked: field agreement is evidence, not proof of identity. A human "
+                       "decides, then records it with confirm_entity_link. A lead, not a join.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"q": dict(_S), "limit": dict(_I)},
+            "required": ["q"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "confirm_entity_link",
+        "title": "Record a human-confirmed cross-source entity alignment",
+        "description": "Record that (source, entity) refers to canonical_id -- a HUMAN decision, the "
+                       "only way a link is created (the tool never auto-links). Stores who/when/why. "
+                       "cross_check(canonical_id=...) then compares every mapped (source, entity). "
+                       "Refuses to link an entity with no facts.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"source": dict(_S), "entity": dict(_S), "canonical_id": dict(_S),
+                           "decided_by": dict(_S), "evidence": dict(_S)},
+            "required": ["source", "entity", "canonical_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "list_entity_links",
+        "title": "List confirmed cross-source entity alignments",
+        "description": "List the human-confirmed entity_links, grouped by canonical_id. Optionally "
+                       "filter to one canonical_id.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"canonical_id": dict(_S)},
+            "required": [],
             "additionalProperties": False,
         },
     },
@@ -378,9 +422,11 @@ def tool_resolve_entities(con, args):
 
 def tool_cross_check(con, args):
     ent = args.get("entity")
-    if not ent:
-        return {"error": "entity is required"}
-    res = G.cross_check(con, ent, field=args.get("field"), date=args.get("date"))
+    cid = args.get("canonical_id")
+    if not ent and not cid:
+        return {"error": "entity or canonical_id is required"}
+    res = G.cross_check(con, ent, field=args.get("field"), date=args.get("date"),
+                        canonical_id=cid)
     if res is None:
         return {"error": "entity is empty after normalization"}
     if not res["sources_compared"]:
@@ -417,6 +463,28 @@ def tool_list_source_anomalies(con, args):
             "anomalies": rows}
 
 
+def tool_propose_entity_links(con, args):
+    q = args.get("q")
+    if not q:
+        return {"error": "q is required"}
+    res = G.propose_entity_links(con, q, limit=int(args.get("limit") or 20))
+    if res is None:
+        return {"error": "q is empty after normalization"}
+    return res
+
+
+def tool_confirm_entity_link(con, args):
+    src = args.get("source"); ent = args.get("entity"); cid = args.get("canonical_id")
+    if not src or not ent or not cid:
+        return {"error": "source, entity and canonical_id are required"}
+    return G.confirm_entity_link(con, src, ent, cid,
+                                 decided_by=args.get("decided_by"), evidence=args.get("evidence"))
+
+
+def tool_list_entity_links(con, args):
+    return G.list_entity_links(con, canonical_id=args.get("canonical_id"))
+
+
 TOOL_FUNCS = {
     "list_sources": tool_list_sources,
     "audit_field_coverage": tool_audit_field_coverage,
@@ -429,6 +497,9 @@ TOOL_FUNCS = {
     "find_duplicate_entities": tool_find_duplicate_entities,
     "resolve_entities": tool_resolve_entities,
     "cross_check": tool_cross_check,
+    "propose_entity_links": tool_propose_entity_links,
+    "confirm_entity_link": tool_confirm_entity_link,
+    "list_entity_links": tool_list_entity_links,
     "list_source_anomalies": tool_list_source_anomalies,
 }
 
@@ -600,6 +671,14 @@ def selftest(db_path: str):
         samples.append(("query_series", {"source": src, "entity": ent, "field": fld}))
     samples.append(("resolve_entities", {"q": ent or src}))
     samples.append(("cross_check", {"entity": ent or src}))
+    samples.append(("propose_entity_links", {"q": ent or src}))
+    samples.append(("list_entity_links", {}))
+    if ent:
+        samples.append(("confirm_entity_link", {"source": src, "entity": ent,
+                                                "canonical_id": "selftest-canonical",
+                                                "decided_by": "selftest",
+                                                "evidence": "selftest smoke"}))
+        samples.append(("cross_check", {"canonical_id": "selftest-canonical"}))
     ok = True
     n_ok = n_errpath = n_err = 0
     for name, args in samples:

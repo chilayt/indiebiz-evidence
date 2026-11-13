@@ -35,7 +35,7 @@
 pip install indiebiz-evidence              # 从 PyPI 安装，零运行时依赖
 indiebiz-evidence demo --db demo.db        # 合成数据，立刻看到 6 类异常
 indiebiz-evidence audit --db demo.db --source demo-prices   # 一句话健康报告
-indiebiz-evidence mcp --db demo.db --selftest               # 12 个 MCP 工具自检
+indiebiz-evidence mcp --db demo.db --selftest               # 15 个 MCP 工具自检
 ```
 
 demo 用的是 2099 年的虚构实体，**不需要你先准备任何数据**。装完在任意目录都能跑
@@ -96,7 +96,7 @@ MCP server 走 stdio。在宿主（Claude Desktop、Codex 等）的配置里加�
 `args` 换成 `["-m", "indiebiz_evidence.cli", "mcp", "--db", "..."]`。
 配置后重启宿主，先调 `list_sources` 确认连上了。
 
-## 十二个 MCP 工具
+## 十五个 MCP 工具
 
 | tool | 用途 |
 |---|---|
@@ -110,7 +110,10 @@ MCP server 走 stdio。在宿主（Claude Desktop、Codex 等）的配置里加�
 | `list_entities` | 源内实体清单（首末次出现 / 出现的抓取日数 / 事实数） |
 | `find_duplicate_entities` | 源内合并候选（`Acme Widget` vs `acme_widget`），带逐对证据 |
 | `resolve_entities` | 跨源找同一个东西的各种写法——只给候选，不自动合并 |
-| `cross_check` | **跨源核对**：同一实体在所有来源的值摆一起，判 一致/打架/孤证，各带出处；同名≠同口径，只摆值不宣判 |
+| `cross_check` | **跨源核对**：同一实体在所有来源的值摆一起，判 一致/打架/孤证，各带出处；同名≠同口径，只摆值不宣判。传 `canonical_id` 用已确认的对齐 |
+| `propose_entity_links` | 跨源对齐**候选**：同名/近名实体 + 逐字段一致/冲突证据；**绝不自动连**，人来定 |
+| `confirm_entity_link` | 记录**人工确认**的跨源对齐（source+entity→canonical_id，存谁/何时/为何）；唯一建链方式 |
+| `list_entity_links` | 已确认的对齐，按 canonical_id 分组 |
 | `list_source_anomalies` | 检测到的异常：数值摆动、累计回退、字段/实体消失、文本漂移、源改版、抓取断档 |
 
 工具描述里写死了纪律：**孤证不是核实；解读任何变化前先查异常；缺失≠0；不跨身份边界做差；跨断档的变化不是一夜之间的；候选不是结论。**
@@ -129,7 +132,7 @@ MCP server 走 stdio。在宿主（Claude Desktop、Codex 等）的配置里加�
 
 ## 成熟度
 
-**0.x 是实验性版本**。已用：合成回归矩阵（14 场景）、148 项测试、文档真值检查。
+**0.x 是实验性版本**。已用：合成回归矩阵（14 场景）、158 项测试、文档真值检查。
 **未用真实语料验证精度**——这条缺口写在 [COMPLIANCE.md](COMPLIANCE.md) §六，不藏着。
 适用场景：本地、受信任输入、单机使用。不承诺处理任意规模或敌意输入。
 
@@ -138,7 +141,7 @@ MCP server 走 stdio。在宿主（Claude Desktop、Codex 等）的配置里加�
 ```bash
 pip install indiebiz-evidence          # 从 PyPI 安装（推荐），装出 indiebiz-evidence 命令
 # 或从源码安装（在仓库克隆目录内）：pip install .
-python scripts/run_release_gate.py     # 五道门禁单一入口（148 tests，跳过=失败；CI 同款）
+python scripts/run_release_gate.py     # 五道门禁单一入口（158 tests，跳过=失败；CI 同款）
 ```
 
 ## 数据与隐私

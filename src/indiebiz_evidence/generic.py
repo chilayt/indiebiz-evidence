@@ -1642,8 +1642,14 @@ def resolve_entities(con, query, limit=20):
                      "same thing. Treat this as a lead, not a join.")}
 
 
-def cross_check(con, entity, field=None, date=None):
+def cross_check(con, entity=None, field=None, date=None, canonical_id=None):
     """Cross-verify one entity's values across every source that reports it.
+
+    Two ways to pick the entities to compare:
+      - canonical_id: use the CONFIRMED entity_links mappings (a human decided these
+        (source, entity) pairs refer to the same thing). This is the stored-alignment
+        path: decide once, compare repeatedly.
+      - entity: exact-normalized name match (a lead, not a join).
 
     A single source handing you a number is not verification. This puts each
     source's reported value side by side WITH provenance (source, capture date,
@@ -1667,14 +1673,26 @@ def cross_check(con, entity, field=None, date=None):
         matching caliber. Values are shown for a human to judge, never auto-declared
         right or wrong. Absent is never zero.
     """
-    qn = normalize_entity(entity)
-    if not qn:
-        return None
-    pairs = con.execute("SELECT DISTINCT source, entity FROM generic_facts").fetchall()
-    matched = [(s, e) for s, e in pairs if normalize_entity(e) == qn]
-    if not matched:
-        return {"entity_query": entity, "normalized": qn, "sources_compared": [],
-                "fields": {}, "note": "no source reports an entity that normalizes to this name"}
+    if canonical_id is not None:
+        matched = con.execute("SELECT source, entity FROM entity_links WHERE canonical_id=?",
+                              (canonical_id,)).fetchall()
+        qn = None
+        match_basis = ("confirmed entity_links for canonical_id=%r (human-decided alignment)"
+                       % canonical_id)
+        if not matched:
+            return {"canonical_id": canonical_id, "sources_compared": [], "fields": {},
+                    "note": "no confirmed entity_links for this canonical_id; "
+                            "use confirm_entity_link to record an alignment first"}
+    else:
+        qn = normalize_entity(entity)
+        if not qn:
+            return None
+        pairs = con.execute("SELECT DISTINCT source, entity FROM generic_facts").fetchall()
+        matched = [(s, e) for s, e in pairs if normalize_entity(e) == qn]
+        match_basis = "exact-normalized name match (a lead, not a join)"
+        if not matched:
+            return {"entity_query": entity, "normalized": qn, "sources_compared": [],
+                    "fields": {}, "note": "no source reports an entity that normalizes to this name"}
     candidates_by_source = {}
     for s, e in matched:
         candidates_by_source.setdefault(s, []).append(e)
@@ -1751,7 +1769,7 @@ def cross_check(con, entity, field=None, date=None):
                              "WHERE slug=? AND kind LIKE 'identity_change:%'", (slug,)):
             ident_anoms.append({"source": s, "entity": e, "observed_date": a[0],
                                 "kind": a[1], "detail": a[2]})
-    caveats = ["name match is a lead, not a join; only exact-normalized matches were compared",
+    caveats = ["match basis: " + match_basis,
                "matching field names do not guarantee matching caliber or unit",
                "equal values are not proof of truth: confirm entity, caliber, timeliness and "
                "that the sources are independent (two sites may reprint the same error)"]
@@ -1770,9 +1788,111 @@ def cross_check(con, entity, field=None, date=None):
     if ident_anoms:
         caveats.append("identity-change anomalies exist for this entity; do not read values across "
                        "an identity boundary as comparable")
-    return {"entity_query": entity, "normalized": qn,
-            "sources_compared": reporting_sources,
-            "candidate_sources": sorted(candidates_by_source),
-            "source_status": source_status,
-            "identity_ambiguity": identity_ambiguity,
-            "fields": out_fields, "identity_anomalies": ident_anoms, "caveats": caveats}
+    out = {"entity_query": entity, "normalized": qn, "match_basis": match_basis,
+           "sources_compared": reporting_sources,
+           "candidate_sources": sorted(candidates_by_source),
+           "source_status": source_status,
+           "identity_ambiguity": identity_ambiguity,
+           "fields": out_fields, "identity_anomalies": ident_anoms, "caveats": caveats}
+    if canonical_id is not None:
+        out["canonical_id"] = canonical_id
+    return out
+
+
+def propose_entity_links(con, query, limit=20):
+    """Offer cross-source alignment CANDIDATES with field-value evidence. Never links.
+
+    Finds entities across sources whose normalized name matches the query, shows each
+    candidate's latest field values, and summarizes per-field agreement/conflict so a
+    human can decide whether they are the same thing. Field agreement is evidence, not
+    proof of identity (two sources can reprint the same error); the decision is the
+    user's, recorded via confirm_entity_link. This is a lead, not a join.
+    """
+    qn = normalize_entity(query)
+    if not qn:
+        return None
+    rows = con.execute("SELECT DISTINCT source, entity FROM generic_facts").fetchall()
+    cands = []
+    for s, e in rows:
+        ne = normalize_entity(e)
+        if ne == qn:
+            kind = "exact_normalized"
+        elif qn in ne or ne in qn:
+            kind = "substring_normalized"
+        else:
+            continue
+        snap = entity_snapshot(con, s, e)
+        cands.append({"source": s, "entity": e, "match": kind,
+                      "latest_date": snap["date"] if snap else None,
+                      "fields": snap["fields"] if snap else {}})
+    cands.sort(key=lambda c: (c["match"] != "exact_normalized", c["source"], c["entity"]))
+    cands = cands[:limit]
+    all_fields = sorted({f for c in cands for f in c["fields"]})
+    field_evidence = {}
+    for fld in all_fields:
+        vals = []
+        for c in cands:
+            v = c["fields"].get(fld)
+            vals.append({"source": c["source"], "entity": c["entity"],
+                         "present": v is not None,
+                         "num": v["num"] if v else None, "text": v["text"] if v else None})
+        present = [v for v in vals if v["present"]]
+        keys = {(v["num"] if v["num"] is not None else v["text"]) for v in present}
+        if not present:
+            status = "absent_everywhere"
+        elif len(keys) == 1:
+            status = "agrees"
+        else:
+            status = "differs"
+        field_evidence[fld] = {"status": status, "values": vals}
+    links = [dict(zip(("source", "entity", "canonical_id", "decided_by", "decided_at", "evidence"), r))
+             for r in con.execute("SELECT source, entity, canonical_id, decided_by, decided_at, evidence "
+                                  "FROM entity_links").fetchall()
+             if any(r[0] == c["source"] and r[1] == c["entity"] for c in cands)]
+    return {"query": query, "normalized": qn, "candidates": cands,
+            "field_evidence": field_evidence, "existing_links": links,
+            "note": ("CANDIDATES only -- nothing is linked. Field agreement is evidence, not proof "
+                     "of identity; matching field names do not guarantee matching caliber. Decide "
+                     "yourself, then record it with confirm_entity_link.")}
+
+
+def confirm_entity_link(con, source, entity, canonical_id, decided_by=None, evidence=None):
+    """Record a HUMAN decision that (source, entity) refers to canonical_id.
+
+    This is the only way a link is created -- the tool never auto-links. The decision
+    (who/when/why) is stored so cross_check(canonical_id=...) can reuse it. Refuses to
+    link an entity that has no facts (a phantom), and refuses an empty canonical_id.
+    """
+    if not canonical_id or not str(canonical_id).strip():
+        return {"error": "canonical_id is required"}
+    has = con.execute("SELECT 1 FROM generic_facts WHERE source=? AND entity=? LIMIT 1",
+                      (source, entity)).fetchone()
+    if not has:
+        return {"error": "no facts for this (source, entity); cannot link a phantom",
+                "source": source, "entity": entity}
+    now = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+    con.execute("INSERT OR REPLACE INTO entity_links"
+                "(source, entity, canonical_id, decided_by, decided_at, evidence) "
+                "VALUES (?,?,?,?,?,?)",
+                (source, entity, str(canonical_id).strip(), decided_by, now, evidence))
+    con.commit()
+    return {"source": source, "entity": entity, "canonical_id": str(canonical_id).strip(),
+            "decided_by": decided_by, "decided_at": now, "evidence": evidence,
+            "note": "recorded a human decision; cross_check(canonical_id=...) now compares this alignment"}
+
+
+def list_entity_links(con, canonical_id=None):
+    """List confirmed cross-source alignments, grouped by canonical_id."""
+    if canonical_id is not None:
+        rows = con.execute("SELECT source, entity, canonical_id, decided_by, decided_at, evidence "
+                           "FROM entity_links WHERE canonical_id=? ORDER BY source, entity",
+                           (canonical_id,)).fetchall()
+    else:
+        rows = con.execute("SELECT source, entity, canonical_id, decided_by, decided_at, evidence "
+                           "FROM entity_links ORDER BY canonical_id, source, entity").fetchall()
+    groups = {}
+    for s, e, cid, by, at, ev in rows:
+        groups.setdefault(cid, []).append({"source": s, "entity": e, "decided_by": by,
+                                           "decided_at": at, "evidence": ev})
+    return {"canonical_ids": len(groups), "links": sum(len(v) for v in groups.values()),
+            "groups": groups}

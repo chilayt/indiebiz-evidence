@@ -80,7 +80,8 @@ class TestMcpProtocol(unittest.TestCase):
             "list_sources", "audit_field_coverage", "search_records",
             "get_source_entity", "query_series", "get_source_evidence_chain",
             "diff_snapshots", "list_entities", "find_duplicate_entities",
-            "resolve_entities", "cross_check", "list_source_anomalies"})
+            "resolve_entities", "cross_check", "list_source_anomalies",
+            "propose_entity_links", "confirm_entity_link", "list_entity_links"})
         for name in ("search_entities", "get_entity", "get_daily_brief", "list_dates"):
             self.assertNotIn(name, tools, "vertical-only tools must not ship here")
 

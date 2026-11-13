@@ -279,3 +279,13 @@ resolve_entities("acme widget")
    那是一个我们无法支撑的身份判断，已删除。
 
 合并与否由人决定。工具只负责把证据摆整齐。
+
+## 跨源实体对齐（entity_links）
+
+不同来源对同一个东西的命名往往不一致（slug ≠ 商品名）。`cross_check` 默认只按归一化名字匹配，所以跨源对齐这一步过去得每次手工重做。现在可以**做一次、存下来**：
+
+1. `propose_entity_links(q)` —— 跨源找同名/近名候选，附**逐字段一致/冲突证据**。**只给候选，绝不自动连**（字段一致是证据，不是身份证明；两个源可能一起转载同一个错误）。
+2. `confirm_entity_link(source, entity, canonical_id, decided_by, evidence)` —— **人工确认**后写入 `entity_links` 表，存谁/何时/为何。这是唯一的建链方式；拒绝给无事实的幻影实体建链。
+3. `cross_check(canonical_id=...)` —— 把所有映射到该 canonical_id 的 (source, entity) 摆一起比较，不再依赖名字恰好一致。`list_entity_links` 查看已确认的对齐。
+
+> 纪律不变：合并发生在**人手里**，工具只记住人做过的判断；候选不是结论，值相同不等于事实已核实。

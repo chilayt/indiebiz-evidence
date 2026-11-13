@@ -1,7 +1,7 @@
 -- indiebiz-evidence (core) schema.
 -- Generic engine only: any periodic snapshot source lands in generic_facts.
 -- Vertical-specific tables, if any, live in a separate private layer, not in this package.
-PRAGMA user_version = 3;
+PRAGMA user_version = 4;
 
 -- Anomaly rows. slug is '<source>:<entity>' for generic sources; the source-level
 -- pseudo entity is '<source>:__schema__'.
@@ -64,3 +64,21 @@ CREATE TABLE IF NOT EXISTS capture_batches(
 );
 
 CREATE INDEX IF NOT EXISTS idx_batches_source ON capture_batches(source, observed_date);
+
+-- Confirmed cross-source entity alignments. A human decides that (source, entity)
+-- refers to canonical_id; the tool never auto-links. propose_entity_links only
+-- offers candidates with field-value evidence; confirm_entity_link records the
+-- human decision here. cross_check(canonical_id=...) then compares every mapped
+-- (source, entity) together. This turns manual alignment from "redo every time"
+-- into "decide once, store it" -- the decision stays a human's, not a verdict.
+CREATE TABLE IF NOT EXISTS entity_links(
+  source        TEXT NOT NULL,
+  entity        TEXT NOT NULL,
+  canonical_id  TEXT NOT NULL,
+  decided_by    TEXT,
+  decided_at    TEXT,
+  evidence      TEXT,
+  PRIMARY KEY(source, entity)
+);
+
+CREATE INDEX IF NOT EXISTS idx_links_canonical ON entity_links(canonical_id);
