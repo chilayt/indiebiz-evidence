@@ -3,7 +3,7 @@
   "name": "io.github.chilayt/indiebiz-evidence",
   "title": "indiebiz-evidence",
   "description": "Cross-check collected data across sources, with provenance, before trusting it. Zero-dependency MCP.",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "repository": {
     "source": "github",
     "url": "https://github.com/chilayt/indiebiz-evidence"
@@ -12,7 +12,7 @@
     {
       "registryType": "pypi",
       "identifier": "indiebiz-evidence",
-      "version": "0.7.0",
+      "version": "0.7.1",
       "runtimeHint": "uvx",
       "packageArguments": [
         {
