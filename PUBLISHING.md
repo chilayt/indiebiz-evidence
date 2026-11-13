@@ -47,9 +47,24 @@ mcp-publisher publish          # 读取本仓库 server.json 并发布
 
 ## 第 3 步（可选，低门槛）：提交到 MCP 目录站
 
-一些目录站只需 GitHub 仓库 URL 即可收录/抓取，门槛比官方 Registry 低，可先做：
-- mcp.so、glama.ai/mcp、smithery.ai 等（提交前先确认各自当前收录规则）。
-- 提交材料：仓库 URL + 一句话定位 + 安装/启动方式（`pip install indiebiz-evidence` → `indiebiz-evidence mcp`）。
+> 主渠道（PyPI + 官方 MCP Registry）已通。目录站是额外搜索面，锦上添花。
+> 2026-11-13 尝试用浏览器自动提交时会话持续掉线（bsk daemon/扩展版本错位），改为手动步骤如下。
+
+已确认的收录规则：
+- **mcp.so**：填 "Submit" 表单，提交仓库 URL（它从 GitHub + npm 抓取）。当前搜 indiebiz 为 0 结果，需提交。
+  - 入口：https://mcp.so/submit ；填 GitHub 仓库 https://github.com/chilayt/indiebiz-evidence
+- **Glama**（glama.ai/mcp/servers）：**自动发现** GitHub 公开 MCP 仓库；也可 submit/claim 补充元数据。仓库已公开，可能稍后自动收录。
+- **PulseMCP**（pulsemcp.com）：填 "Add a server" 表单，提交仓库 URL。
+- **Smithery**（smithery.ai）：需要 smithery.yaml 启动配置，偏托管/启动平台，门槛稍高，可后置。
+
+提交材料（通用）：
+- 仓库 URL：https://github.com/chilayt/indiebiz-evidence
+- 一句话定位：Cross-check collected data across sources, with provenance, before trusting it. Zero-dependency MCP server.
+- 安装/启动：pip install indiebiz-evidence → indiebiz-evidence mcp --db <path>
+- PyPI：https://pypi.org/project/indiebiz-evidence/
+- 官方 Registry：io.github.chilayt/indiebiz-evidence
+
+> 诚实性：目录提交是"放到用户会看的地方"，不刷 star/下载量；不声称生产级精度。
 
 ## 诚实性提醒
 - 本工具是**实验性**（0.6.x），真实语料精度验证未完成；对外文案不要声称"生产级精度"。
