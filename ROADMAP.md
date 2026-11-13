@@ -1,7 +1,9 @@
 # indiebiz-evidence 演进路线
 
-> 状态：**v2**（2026-11-10）。v1 的"五个整阶段依次推进"经 Codex 评审后被否，本版按证据重排。
-> 现状：v0.5.1，110 tests / 0 skip，五道门禁单一入口（`scripts/run_release_gate.py`）。
+> 状态：**v3**（2026-11-13）。v2 按证据重排；v3 经 Codex/Qoder/MiniMax 三方评审，重心从"造引擎"转向"分发 + 证明有人用"。
+> 现状：v0.7.1，148 tests / 0 skip，五道门禁单一入口（`scripts/run_release_gate.py`）。已发布 PyPI + 官方 MCP Registry。
+> 近期核心能力：`cross_check`（多源核对，候选不宣判）、`identity_continuity_hint`（匿名实体累计回退的身份复用线索）。
+> **引擎冻结**：在出现外部采用信号前不再新增检测器/工具；精力投向分发断点修复、真实语料精度、真实用户（见 §三）。
 
 ## 零、不做什么（永久）
 

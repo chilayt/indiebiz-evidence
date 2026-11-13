@@ -213,9 +213,15 @@ def _rows(con, sql, args=()):
 
 
 def tool_list_sources(con, args):
-    return {"sources": G.list_sources(con),
-            "note": "anomaly slugs for these sources are '<source>:<entity>'; the "
-                    "source-level pseudo entity is '<source>:__schema__'"}
+    sources = G.list_sources(con)
+    out = {"sources": sources,
+           "note": "anomaly slugs for these sources are '<source>:<entity>'; the "
+                   "source-level pseudo entity is '<source>:__schema__'"}
+    if not sources:
+        out["next_step"] = ("No sources yet. Import your own dated CSV/JSON exports: "
+                            "indiebiz-evidence import --source <name> --input <dir> --db <this db>. "
+                            "Or explore the synthetic demo: indiebiz-evidence demo --db <path>.")
+    return out
 
 
 def tool_audit_field_coverage(con, args):
@@ -519,9 +525,12 @@ def _handle(con, msg):
 
 
 def serve(db_path: str):
+    # A missing db must NOT kill the server: an MCP host that installs from the
+    # registry has no data yet, and "server failed to start" is a dead end. Create
+    # an empty store and serve; list_sources tells the user how to import. (P0-1)
     if not os.path.exists(db_path):
-        sys.stderr.write("evidence db not found: %s (import a source first)\n" % db_path)
-        sys.exit(2)
+        sys.stderr.write("evidence db not found: %s -- creating an empty store; "
+                         "import a source to populate it\n" % db_path)
     _reconfigure_stdio()
     con = store.connect(db_path)
     store.init_db(con)

@@ -33,6 +33,12 @@ ALLOWED_PREFIXES = ("tests/fixtures/", "src/indiebiz_evidence/demo_data/")
 MARKERS = ("tmrr_", "Authorization: Bearer ", "-----BEGIN PRIVATE KEY-----",
            "AWS_SECRET_ACCESS_KEY", "ghp_", "github_pat_")
 
+# Upstream platform / real-entity identifiers that must never appear in public
+# text (docs, changelog, code comments). Matched case-insensitively. This file
+# itself lists them, so it is skipped via SELF. The point: anonymization must not
+# silently regress -- a changelog entry naming the upstream is a compliance leak.
+UPSTREAM_TERMS = ("trustmrr", "confidential-startup-")
+
 SKIP_PREFIX = (".git/", "node_modules/", "__pycache__/", "build/", "dist/", ".venv/")
 
 # This file necessarily contains the marker strings it searches for. Skip exactly
@@ -129,6 +135,10 @@ def _main(argv=None):
         for m in MARKERS:
             if m in body:
                 problems.append((f, "contains a credential marker (%s)" % m.strip()))
+        low = body.lower()
+        for term in UPSTREAM_TERMS:
+            if term in low:
+                problems.append((f, "names an upstream platform/real entity (%s)" % term))
     if problems:
         sys.stderr.write("REFUSED: this repository must not ship data or credentials.\n")
         for f, why in problems:

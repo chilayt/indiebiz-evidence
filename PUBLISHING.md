@@ -27,9 +27,9 @@
 > ⚠️ PyPI 版本号**不可覆盖**：发错的版本只能再发新版，不能改。当前待发版本 0.6.1。
 > ⚠️ 上传前确认 `dist/` 里只有本次要发的版本，别把旧版本一起传上去。
 
-## 第 2 步：发布到官方 MCP Registry ✅ 已完成（2026-11-13）
+## 第 2 步：发布到官方 MCP Registry ✅ 已完成（2026-11-13，v0.6.1 → v0.7.0）
 
-> 已发布：`io.github.chilayt/indiebiz-evidence@0.6.1`，registry 搜索可查到。mcp-publisher 装于 I:\tools\mcp-publisher\；GitHub 设备码授权由负责人完成。description 限 100 字符、packageArguments 需 positional 对象，均已处理。以下为原步骤存档：
+> 已发布：`io.github.chilayt/indiebiz-evidence@0.7.0`，registry 搜索可查到。注：GitHub 账号需先开 2FA 才能完成 OAuth 授权；授权按钮对自动化浏览器禁用，需负责人本人点击。mcp-publisher 装于 I:\tools\mcp-publisher\；GitHub 设备码授权由负责人完成。description 限 100 字符、packageArguments 需 positional 对象，均已处理。以下为原步骤存档：
 
 前提：第 1 步已把包发到 PyPI（Registry 靠 README 里的 `mcp-name` 标记验证 PyPI 所有权）。
 Registry 目前是 **preview**，可能有破坏性变更。流程见官方 quickstart：

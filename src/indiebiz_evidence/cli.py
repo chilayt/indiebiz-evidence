@@ -112,9 +112,12 @@ def _cmd_crosscheck(a):
 
 def _cmd_mcp(a):
     from . import mcp_server
+    # --db > INDIEBIZ_EVIDENCE_DB env > default. The env var lets an MCP host point
+    # at an absolute db path without hardcoding it in packageArguments. (P0-1)
+    db = a.db or os.environ.get("INDIEBIZ_EVIDENCE_DB") or "data/evidence.db"
     if a.selftest:
-        return mcp_server.selftest(a.db)
-    mcp_server.serve(a.db)
+        return mcp_server.selftest(db)
+    mcp_server.serve(db)
     return 0
 
 
@@ -152,7 +155,8 @@ def main(argv=None):
     p.set_defaults(fn=_cmd_crosscheck)
 
     p = sub.add_parser("mcp", help="run the stdio MCP server (or --selftest)")
-    p.add_argument("--db", default="data/evidence.db")
+    p.add_argument("--db", default=None,
+                   help="db path (else INDIEBIZ_EVIDENCE_DB env, else data/evidence.db)")
     p.add_argument("--selftest", action="store_true")
     p.set_defaults(fn=_cmd_mcp)
 

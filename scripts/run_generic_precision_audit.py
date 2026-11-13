@@ -136,6 +136,19 @@ SCENARIOS = [
         "forbid": ["field_gone", "field_renamed_candidate"],
     },
     {
+        "name": "field-vanished-for-one-entity",
+        "why": "a field present for an entity across 3 captures goes absent while the column stays: entity-level loss, not a schema change",
+        "files": {
+            "2026-01-01": "id,price,promo\na,10,SAVE\nb,20,SAVE",
+            "2026-01-02": "id,price,promo\na,10,SAVE\nb,20,SAVE",
+            "2026-01-03": "id,price,promo\na,10,SAVE\nb,20,SAVE",
+            "2026-01-04": "id,price,promo\na,10,\nb,20,SAVE",
+        },
+        "config": {"entity_column": "id", "min_presence_days": 3, "null_markers": ["", "-"]},
+        "expect": ["field_disappeared"],
+        "forbid": ["field_gone", "entity_disappeared"],
+    },
+    {
         "name": "text-drift",
         "why": "a declared text field changed",
         "files": {

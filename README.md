@@ -32,7 +32,7 @@
 ## 五分钟上手（先跑 demo，不用先有自己的数据）
 
 ```bash
-pip install .                              # 零运行时依赖
+pip install indiebiz-evidence              # 从 PyPI 安装，零运行时依赖
 indiebiz-evidence demo --db demo.db        # 合成数据，立刻看到 6 类异常
 indiebiz-evidence audit --db demo.db --source demo-prices   # 一句话健康报告
 indiebiz-evidence mcp --db demo.db --selftest               # 12 个 MCP 工具自检
@@ -129,15 +129,16 @@ MCP server 走 stdio。在宿主（Claude Desktop、Codex 等）的配置里加�
 
 ## 成熟度
 
-**v0.5.x 是实验性版本**。已用：合成回归矩阵（13 场景）、147 项测试、文档真值检查。
+**0.x 是实验性版本**。已用：合成回归矩阵（14 场景）、148 项测试、文档真值检查。
 **未用真实语料验证精度**——这条缺口写在 [COMPLIANCE.md](COMPLIANCE.md) §六，不藏着。
 适用场景：本地、受信任输入、单机使用。不承诺处理任意规模或敌意输入。
 
 ## 安装
 
 ```bash
-pip install .                          # 零运行时依赖，装出 indiebiz-evidence 命令
-python scripts/run_release_gate.py     # 五道门禁单一入口（147 tests，跳过=失败；CI 同款）
+pip install indiebiz-evidence          # 从 PyPI 安装（推荐），装出 indiebiz-evidence 命令
+# 或从源码安装（在仓库克隆目录内）：pip install .
+python scripts/run_release_gate.py     # 五道门禁单一入口（148 tests，跳过=失败；CI 同款）
 ```
 
 ## 数据与隐私

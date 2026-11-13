@@ -5,7 +5,9 @@ the first-success path works after `pip install` from outside the repository.
 These tests exercise the same entry point the console script calls, with paths
 relative to a temporary CWD -- not the repo root.
 """
+import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -83,6 +85,33 @@ class TestInstalledCli(unittest.TestCase):
         cli.main(["demo", "--db", "demo.db"])
         rc = cli.main(["mcp", "--db", "demo.db", "--selftest"])
         self.assertEqual(rc, 0)
+
+
+class TestMcpEmptyDbStartup(unittest.TestCase):
+    """P0-1: an MCP host installing from the registry has no data yet. The server
+    must START (not exit 2) and tell the user how to import, not die silently."""
+
+    def test_mcp_starts_with_no_db_and_guides(self):
+        work = tempfile.mkdtemp(prefix="ibe-mcp-empty-")
+        env = dict(os.environ, PYTHONIOENCODING="utf-8",
+                   PYTHONPATH=os.path.join(PROJ, "src"))
+        init = {"jsonrpc": "2.0", "id": 1, "method": "initialize",
+                "params": {"protocolVersion": "2025-06-18", "capabilities": {},
+                           "clientInfo": {"name": "t", "version": "0"}}}
+        ls = {"jsonrpc": "2.0", "id": 2, "method": "tools/call",
+              "params": {"name": "list_sources", "arguments": {}}}
+        stdin = json.dumps(init) + "\n" + json.dumps(ls) + "\n"
+        p = subprocess.run([sys.executable, "-m", "indiebiz_evidence.cli", "mcp"],
+                           input=stdin, capture_output=True, text=True,
+                           cwd=work, env=env, timeout=60)
+        self.assertEqual(p.returncode, 0, "mcp must not exit 2 on a missing db")
+        resp = [json.loads(l) for l in p.stdout.splitlines() if l.strip()]
+        ls_resp = [d for d in resp if d.get("id") == 2]
+        self.assertTrue(ls_resp)
+        payload = json.loads(ls_resp[0]["result"]["content"][0]["text"])
+        self.assertEqual(payload["sources"], [])
+        self.assertIn("next_step", payload)
+        self.assertIn("import", payload["next_step"])
 
 
 if __name__ == "__main__":

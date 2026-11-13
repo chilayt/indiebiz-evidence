@@ -2,10 +2,19 @@
 
 版本史摘要。
 
+## v0.7.1 (2026-11-13)
+- **按三方评审（Codex/Qoder/MiniMax）修分发断点与合规泄漏**：
+  - **P0 合规泄漏**：v0.7.0 changelog 曾含上游平台名+真实匿名 slug+数值，已匿名化；COMPLIANCE 主动声明 commit message 残留；数据守卫新增上游名/真实实体文本扫描（负向测试验证可拦）。
+  - **P0 Registry 启动死路**：mcp 缺库不再 exit 2，自动建空库并 serve，list_sources 空时返回导入指引；支持 INDIEBIZ_EVIDENCE_DB 环境变量。新增空库启动回归测试。
+  - **P0 PyPI 安装命令**：README 改为首推 pip install indiebiz-evidence（PyPI 渲染的就是这份 README）；文档门禁新增断言防止漂回 pip install .。
+  - 仓库元数据补齐（description/topics/homepage/discussions）；ROADMAP 更新到 v3（引擎冻结、转向分发与采用）。
+  - 精度矩阵补 field_disappeared 正例（此前 TP=0，号称最重要的规则却无正例）；现 14 场景。
+- 测试 148 / 0 skip
+
 ## v0.7.0 (2026-11-13)
 - **新增 `identity_continuity_hint`（默认关）**：匿名实体的身份复用线索。源自真实数据验证——
-  TrustMRR 采集里 `confidential-startup-76` 一个 Stealth 壳先后装了三家公司（alltime 42485→249→295001），
-  工具靠累计回退抓到，但因 founder 恒空无法自动标身份变更。
+  某公开数据平台的采集里，一个匿名 Stealth slug 先后指向了三家不同的公司（累计收入先骤降、后又跳升一个数量级），
+  工具靠累计回退抓到，但因身份字段恒空无法自动标身份变更。（真实平台名/实体名/数值不在公开面披露。）
 - 按 Codex 评审收紧实现：**不新增异常类型**，仅在 `monotonic_regression.detail` 追加提示；
   触发需"来源显式开启 + 声明了身份字段 + 截至回退日历史上所有身份字段无有效值"；
   文案明示"可能是退款/口径/解析/上游修正，尚未确认身份变更"（**累计回退≠必然换壳**，净累计可因退款合法下降）。

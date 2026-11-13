@@ -206,6 +206,12 @@ CN_NUM = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7,
 def check_numbers():
     problems = []
     readme = open(os.path.join(ROOT, "README.md"), encoding="utf-8").read()
+    # PyPI renders this README. If it only shows "pip install .", anyone arriving
+    # from PyPI copies a command that fails. The published-package install command
+    # must be present. (P0-2)
+    if "pip install indiebiz-evidence" not in readme:
+        problems.append("README lacks 'pip install indiebiz-evidence' -- the PyPI page "
+                        "would teach a broken install command")
     with open(os.path.join(ROOT, "CHANGELOG.md"), encoding="utf-8") as f:
         changelog = f.read()
     # take the newest version section without hard-coding its number: a renamed
