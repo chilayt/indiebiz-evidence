@@ -10,9 +10,9 @@
 - README 已含 MCP Registry 所有权验证标记 `<!-- mcp-name: io.github.chilayt/indiebiz-evidence -->`。
 - `server.json` 已按官方 schema 备好（registryType=pypi, transport=stdio, runtimeHint=uvx）。
 
-## 第 1 步：发布到 PyPI ✅ 已完成（2026-11-13，v0.6.1）
+## 第 1 步：发布到 PyPI ✅ 已完成（2026-11-13，v0.6.1 → v0.7.0）
 
-> 已发布：https://pypi.org/project/indiebiz-evidence/0.6.1/ ；全新 venv `pip install indiebiz-evidence` 验证可装可跑。token 存于本机凭据目录（不进 git）。以下为原步骤存档：
+> 已发布：https://pypi.org/project/indiebiz-evidence/0.7.0/ （最新）；全新 venv `pip install indiebiz-evidence` 验证可装可跑。token 存于本机凭据目录（不进 git）。注：PyPI JSON API 缓存有延迟，pip 用 --no-cache-dir 可立即拿到新版。以下为原步骤存档：
 
 1. 注册/登录 https://pypi.org ，开启 2FA。
 2. Account settings → API tokens → 新建 token（首次上传用 "Entire account"  scope；上传后可换成仅该项目）。
