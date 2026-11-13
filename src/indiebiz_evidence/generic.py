@@ -84,6 +84,11 @@ DEFAULT_CONFIG = {
     "min_presence_days": 3,
     "stale_hours": 48,
     "null_markers": ["", "n/a", "na", "-", "--", "null", "none", "nan"],
+    # When a declared-cumulative field regresses AND the entity has no usable
+    # identity value anywhere up to that capture, append an identity-continuity
+    # hint to the regression detail. Off by default; a hint, never a verdict, and
+    # never an identity boundary. See docs/acceptance + Codex review 2026-11-13.
+    "identity_continuity_hint": False,
 }
 
 
@@ -636,14 +641,36 @@ def detect_generic(con, source, config=None, verbose=True):
             if t0 is not None and t1 is not None and t0 != t1 and not _likely_rename(t0, t1):
                 boundaries.setdefault(ent, set()).add(d1)
 
+    # Earliest date any declared identity field held a usable value, per entity.
+    # per_ef only contains non-null facts (the importer drops null markers), so an
+    # identity field with no row up to d1 means "no usable identity value by d1".
+    # We deliberately look only at history, never at dates after the regression.
+    hint_on = bool(cfg.get("identity_continuity_hint"))
+    ident_first = {}
+    if hint_on and ident:
+        for (ent, fld), series in per_ef.items():
+            if fld in ident and series:
+                d_first = series[0][0]
+                if ent not in ident_first or d_first < ident_first[ent]:
+                    ident_first[ent] = d_first
+
     for (ent, fld), series in per_ef.items():
         bset = boundaries.get(ent, set())
         for (d0, n0, t0), (d1, n1, t1) in zip(series, series[1:]):
             if (fld in mono and not _crosses_boundary(d0, d1, bset)
                     and n0 is not None and n1 is not None and n1 < n0 - 0.005):
-                flag(d1, ent, "monotonic_regression:" + fld, "warn",
-                     "%s decreased %s -> %s (declared cumulative; list both values, never diff)"
-                     % (fld, n0, n1))
+                detail = ("%s decreased %s -> %s (declared cumulative; list both values, never diff)"
+                          % (fld, n0, n1))
+                if hint_on and ident:
+                    first_ident = ident_first.get(ent)
+                    if first_ident is None or first_ident > d1:
+                        detail += (" [%s -> %s] no usable identity value recorded up to this capture; "
+                                   "identity continuity cannot be verified. Check identifier reuse; "
+                                   "refunds/write-offs, a caliber change, a capture/parse error, or an "
+                                   "upstream correction can also cause a regression. Compare the raw "
+                                   "files for both dates; identity change is NOT confirmed."
+                                   % (d0, d1))
+                flag(d1, ent, "monotonic_regression:" + fld, "warn", detail)
             if fld in ident and t0 is not None and t1 is not None and t0 != t1:
                 if _likely_rename(t0, t1):
                     flag(d1, ent, "identity_rename_candidate:" + fld, "info",

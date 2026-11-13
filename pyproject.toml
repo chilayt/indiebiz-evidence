@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "indiebiz-evidence"
-version = "0.6.1"
+version = "0.7.0"
 description = "Cross-check collected information across sources before calling it an answer: provenance, agreement, anomalies, and a zero-dependency MCP server"
 readme = "README.md"
 license = { text = "MIT" }
