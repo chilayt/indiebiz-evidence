@@ -59,6 +59,7 @@ python scripts/run_import.py --source my-prices --input exports/my-prices
   "timestamp_fields": ["updated_at"],
   "swing_fields": null,
   "swing_threshold": 0.30,
+  "swing_thresholds": {"l24h": 3.0},
   "min_presence_days": 3,
   "stale_hours": 48,
   "null_markers": ["", "n/a", "na", "-", "--", "null", "none", "nan"],
@@ -78,6 +79,8 @@ python scripts/run_import.py --source my-prices --input exports/my-prices
 > `field_disappeared` 是本项目最重要的一条通用规则——它就是“GSC 字段消失 13 天”事故的制度化防线：**字段缺席时先怀疑源和解析器，再下“被移除”的结论**（证据链：私有事故档案）。
 >
 > `min_presence_days` 按**该实体的连续捕获次数**计（非自然日）。默认 3 次适合日更源；周更源建议 2；**demo 配置里的 1 仅为让两天夹具能触发，不是推荐值**。
+>
+> **`swing_thresholds`（逐字段摆动阈值，默认 {}）**：天然高波动的字段（如"近24小时收入"）用更高阈值（如 3.0=300%），免得每天几百条摆动告警把真正重要的信号淹掉。未列出的字段回落到 `swing_threshold`。只影响 value_swing，不影响累计回退等其他规则。
 >
 > **`identity_continuity_hint`（默认 false）**：开启后，若某实体声明的累计字段回退、且**截至该次抓取历史上所有身份字段都无有效值**，会在 `monotonic_regression` 的 detail 里**追加一句提示**："身份连续性无法核验，请查标识复用；但退款/冲销、口径变化、解析错误、上游修正也可能导致回退，需核对原始文件，**尚未确认身份变更**"。面向匿名/Stealth 实体（身份字段恒空）的身份复用线索。**它是提示不是结论**：不新增异常类型、不产生身份边界、不抑制 value_swing、不改 diff/跨源行为。身份字段曾有过有效值则不提示。
 

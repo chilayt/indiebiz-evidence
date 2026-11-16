@@ -81,6 +81,10 @@ DEFAULT_CONFIG = {
     "timestamp_fields": [],
     "swing_fields": None,
     "swing_threshold": 0.30,
+    # Per-field overrides, e.g. {"l24h": 3.0}: naturally volatile fields need a
+    # higher bar so they do not drown the signals that matter. Falls back to
+    # swing_threshold for any field not listed.
+    "swing_thresholds": {},
     "min_presence_days": 3,
     "stale_hours": 48,
     "null_markers": ["", "n/a", "na", "-", "--", "null", "none", "nan"],
@@ -612,6 +616,7 @@ def detect_generic(con, source, config=None, verbose=True):
     tstamp = set(cfg.get("timestamp_fields") or [])
     swing_fields = cfg.get("swing_fields")
     thr = float(cfg.get("swing_threshold") or 0.30)
+    per_thr = cfg.get("swing_thresholds") or {}
     stale_h = float(cfg.get("stale_hours") or 48)
     min_pres = int(cfg.get("min_presence_days") or 1)
 
@@ -692,14 +697,15 @@ def detect_generic(con, source, config=None, verbose=True):
                 is_swing = False  # cross-boundary changes are meaningless, not signals
             if is_swing and n0 is not None and n1 is not None and n0 != 0:
                 ch = (n1 - n0) / abs(n0)
-                if abs(ch) >= thr:
+                fthr = float(per_thr.get(fld, thr))
+                if abs(ch) >= fthr:
                     span = gap_days.get(d1)
                     extra = ""
                     if d1 in gapped and span:
                         extra = " over %d days (capture gap; not a one-day move)" % span
                     flag(d1, ent, "value_swing:" + fld, "info",
                          "%s moved %s -> %s (%+.0f%%, threshold %.0f%%)%s"
-                         % (fld, n0, n1, ch * 100, thr * 100, extra))
+                         % (fld, n0, n1, ch * 100, fthr * 100, extra))
 
     # text drift: content-bearing fields change for reasons that matter to a
     # collector (title renamed, status open->closed, description rewritten) but
