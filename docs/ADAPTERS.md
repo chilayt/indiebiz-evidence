@@ -62,6 +62,7 @@ python scripts/run_import.py --source my-prices --input exports/my-prices
   "swing_thresholds": {"l24h": 3.0},
   "min_presence_days": 3,
   "stale_hours": 48,
+  "optional_fields": ["ask", "firstlisted"],
   "null_markers": ["", "n/a", "na", "-", "--", "null", "none", "nan"],
   "date_column": null,
   "identity_continuity_hint": false
@@ -79,6 +80,10 @@ python scripts/run_import.py --source my-prices --input exports/my-prices
 > `field_disappeared` 是本项目最重要的一条通用规则——它就是“GSC 字段消失 13 天”事故的制度化防线：**字段缺席时先怀疑源和解析器，再下“被移除”的结论**（证据链：私有事故档案）。
 >
 > `min_presence_days` 按**该实体的连续捕获次数**计（非自然日）。默认 3 次适合日更源；周更源建议 2；**demo 配置里的 1 仅为让两天夹具能触发，不是推荐值**。
+>
+> **`optional_fields`（天然实体专属字段，默认 []）**：只有部分实体才会有的列（只有在售的才有 `ask`、只有新条目才有 `firstlisted`）。声明后这些列不再报 `partial_drop`，改记 `status=optional` 并单列在 `schema_events.optional_fields_missing_on_latest`——否则"永久部分丢失"会把字段健康段变成每天一样的背景墙。未声明的字段行为不变。
+>
+> **`text_contains_markup:<field>`（无需配置，声明了身份/文本字段即生效）**：声明的文本字段里出现原始 Markdown（`[名字](链接)`）、HTML 标签（`<b>`）或 HTML 实体（`&nbsp;`）时报出——这说明解析器存的是**渲染后的单元格**，不是值。它会毒害身份识别（同一个人读成 `X` 与 `[X](url)` 两个），所以在源头剥掉标记比在下游补救便宜。源级聚合：每字段每次抓取一条，带样本；≥3 条为 warn，1-2 条为 info。
 >
 > **`swing_thresholds`（逐字段摆动阈值，默认 {}）**：天然高波动的字段（如"近24小时收入"）用更高阈值（如 3.0=300%），免得每天几百条摆动告警把真正重要的信号淹掉。未列出的字段回落到 `swing_threshold`。只影响 value_swing，不影响累计回退等其他规则。
 >

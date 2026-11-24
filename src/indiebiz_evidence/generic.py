@@ -98,6 +98,13 @@ DEFAULT_CONFIG = {
 
 _THOUSANDS = re.compile(r"^\d{1,3}(,\d{3})+(\.\d+)?$")
 
+# Rendered-cell detectors: a stored value that still carries markup was copied from a
+# rendered page, not parsed. Patterns stay narrow so ordinary text ("R&D", "a < b")
+# does not trip them.
+_MD_LINK = re.compile(r"\[[^\]\n]{1,200}\]\([^)\n]{1,300}\)")
+_HTML_TAG = re.compile(r"<[A-Za-z/][A-Za-z0-9]{0,20}(?:\s[^<>\n]{0,200})?/?>")
+_HTML_ENTITY = re.compile(r"&(?:[A-Za-z]{2,10}|#\d{2,6});")
+
 
 def _text_change(a, b, n=80):
     """Readable description of a text change.
@@ -724,6 +731,36 @@ def detect_generic(con, source, config=None, verbose=True):
             flag(d1, ent, "text_changed:" + fld, "info",
                  "%s changed %s" % (fld, _text_change(t0, t1)))
 
+    # parser-artifact guard: a text field carrying raw markup is not a value, it is
+    # evidence the parser stored a RENDERED cell. That poisons identity comparison --
+    # the same person reads as two ('X' and '[X](url)') -- which is how 87% markdown
+    # in one column produced false identity-change alerts in a real capture. Reported
+    # at the SOURCE level (one line per field per capture, with samples) so it stays
+    # one actionable line instead of hundreds of per-entity rows.
+    markup_fields = set(text_fields) | ident
+    if markup_fields:
+        by_df = {}
+        for d, ent, fld, num, text in facts:
+            if fld not in markup_fields or text is None or not text.strip():
+                continue
+            by_df.setdefault((d, fld), []).append((ent, text))
+        for (d, fld) in sorted(by_df):
+            vals = by_df[(d, fld)]
+            hits = [(e, t) for e, t in vals
+                    if _MD_LINK.search(t) or _HTML_TAG.search(t) or _HTML_ENTITY.search(t)]
+            if not hits:
+                continue
+            pct = 100.0 * len(hits) / len(vals)
+            sample = "; ".join(repr(t[:60]) for _e, t in hits[:2])
+            # severity follows volume, not ratio: one odd value is a lead, a batch of
+            # them is a parser that copies rendered cells
+            flag(d, SCHEMA_ENTITY, "text_contains_markup:" + fld,
+                 "warn" if len(hits) >= 3 else "info",
+                 "%d of %d values in %s contain raw markup (%.0f%%), e.g. %s -- the parser "
+                 "is storing a rendered cell, not the value. Strip Markdown/HTML at the "
+                 "source: the same entity can otherwise read as two different ones "
+                 "('X' vs '[X](url)')" % (len(hits), len(vals), fld, pct, sample))
+
     # field_disappeared: the GSC lesson, generalized
     for ent, dates in entity_dates.items():
         dlist = sorted(dates)
@@ -1017,9 +1054,14 @@ def field_coverage(con, source, max_gap_days=None):
     capturing reliably, and which ones silently vanished (scraper break,
     parser regression, upstream schema change)?
     """
+    cfg = _stored_config(con, source) or {}
     cfg_gap = max_gap_days
     if cfg_gap is None:
-        cfg_gap = (_stored_config(con, source) or {}).get("max_gap_days")
+        cfg_gap = cfg.get("max_gap_days")
+    # Fields that are entity-specific by nature (only listed items have a price,
+    # only new items have firstlisted). Declaring them stops a permanent
+    # "partial drop" that would train the reader to ignore the section.
+    optional = set(cfg.get("optional_fields") or [])
     dates = _source_dates(con, source)
     if not dates:
         return None
@@ -1095,9 +1137,14 @@ def field_coverage(con, source, max_gap_days=None):
             # discipline #8: a field that used to arrive and now does not is a
             # capture problem until proven otherwise -- never "the source has no
             # such data any more". status is machine-readable; verdict is for humans.
-            "status": ("absent_on_latest" if (dropped and now_present == 0) else
+            "status": ("optional" if (dropped and field in optional) else
+                       "absent_on_latest" if (dropped and now_present == 0) else
                        ("partial_drop" if dropped else "ok")),
             "verdict": (
+                "OPTIONAL: declared entity-specific (optional_fields); %d of %d "
+                "still-present entities do not report it on the latest date. Not a "
+                "capture problem by configuration." % (len(dropped), len(live_set))
+                if (dropped and field in optional) else
                 "ABSENT-NOW: no still-present entity reports this field on the latest "
                 "date. The column may have been removed, renamed or emptied -- the fact "
                 "table stores no null cells, so it cannot tell these apart. Check the "
@@ -1125,6 +1172,8 @@ def field_coverage(con, source, max_gap_days=None):
                for f in out if f["status"] == "absent_on_latest"]
     partial = [{"field": f["field"], "lost_by": f["dropped_on_latest"]}
                for f in out if f["status"] == "partial_drop"]
+    optional_dropped = [{"field": f["field"], "missing_on_latest": f["dropped_on_latest"]}
+                        for f in out if f["status"] == "optional"]
     # cadence: is this source actually being captured at a steady rhythm?
     _cad = _cadence(dates, cfg_gap)
     cadence = {
@@ -1163,6 +1212,9 @@ def field_coverage(con, source, max_gap_days=None):
             "schema_events": {"fields_added_after_first_capture": added,
                               "fields_missing_on_latest": removed,
                               "fields_partially_missing_on_latest": partial,
+                              # declared optional: reported here so it is visible, but it
+                              # is not a shape change and must not read as a capture bug
+                              "optional_fields_missing_on_latest": optional_dropped,
                               "note": ("a column that was not there from the start, or "
                                        "whose live entities stopped reporting it, means the "
                                        "observed shape differs from the initial capture -- the "
