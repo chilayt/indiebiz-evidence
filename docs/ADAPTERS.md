@@ -83,7 +83,7 @@ python scripts/run_import.py --source my-prices --input exports/my-prices
 >
 > **`optional_fields`（天然实体专属字段，默认 []）**：只有部分实体才会有的列（只有在售的才有 `ask`、只有新条目才有 `firstlisted`）。声明后这些列不再报 `partial_drop`，改记 `status=optional` 并单列在 `schema_events.optional_fields_missing_on_latest`——否则"永久部分丢失"会把字段健康段变成每天一样的背景墙。未声明的字段行为不变。
 >
-> **`text_contains_markup:<field>`（无需配置，声明了身份/文本字段即生效）**：声明的文本字段里出现原始 Markdown（`[名字](链接)`）、HTML 标签（`<b>`）或 HTML 实体（`&nbsp;`）时报出——这说明解析器存的是**渲染后的单元格**，不是值。它会毒害身份识别（同一个人读成 `X` 与 `[X](url)` 两个），所以在源头剥掉标记比在下游补救便宜。源级聚合：每字段每次抓取一条，带样本；≥3 条为 warn，1-2 条为 info。
+> **`text_contains_markup:<field>`（无需配置，声明了身份/文本字段即生效）**：声明的文本字段里出现原始 Markdown（`[名字](链接)`）、HTML 标签（`<b>`）或 HTML 实体（`&nbsp;`）时报出。这些标记可能让同一实体产生两种写法。每个字段在每次采集中报告一次，列出数量和比例。命中 3 条及以上为 warn，1–2 条为 info。用该字段和日期回到本机的原始采集文件检查解析。
 >
 > **`swing_thresholds`（逐字段摆动阈值，默认 {}）**：天然高波动的字段（如"近24小时收入"）用更高阈值（如 3.0=300%），免得每天几百条摆动告警把真正重要的信号淹掉。未列出的字段回落到 `swing_threshold`。只影响 value_swing，不影响累计回退等其他规则。
 >

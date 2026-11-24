@@ -98,6 +98,7 @@ def report(con, source):
         print("  （无）")
     for d, slug, kind, sev, detail in rows:
         print("  %s  %-30s %-22s %s" % (d, slug, kind, sev or ""))
+        detail = store.anomaly_detail(kind, detail)
         if detail:
             print("      %s" % detail)
     return 0

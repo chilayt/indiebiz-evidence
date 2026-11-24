@@ -6,7 +6,7 @@
 | PyPI 页 | https://pypi.org/project/indiebiz-evidence/0.6.1/ |
 | 验证 | 全新 venv 从 PyPI 安装 0.6.1，仓库外 demo + 12 工具 selftest 全过 |
 | 账户 | 负责人用 iCloud 邮箱注册（非 Gmail，故 Gmail 无验证信），已验证 + 已开 2FA（TOTP）|
-| token | indiebiz-upload，Entire account scope；存 I:\tools\DSH\credentials\pypi-token.txt/.md（不进 git）|
+| 发布凭据 | 使用项目负责人的 PyPI 上传凭据，在仓库外保存 |
 
 ## 过程要点
 - 负责人浏览器已登录；用 browser-skill 协助走完 2FA（恢复码由负责人自存，我不读）+ 建 token。

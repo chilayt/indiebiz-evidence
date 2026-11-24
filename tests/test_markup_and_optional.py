@@ -46,6 +46,8 @@ class TestTextContainsMarkup(unittest.TestCase):
         rows = self.markup()
         self.assertEqual(len(rows), 1)
         self.assertIn("raw markup", rows[0][1])
+        self.assertNotIn("[Ann]", rows[0][1])
+        self.assertNotIn("http://x/ann", rows[0][1])
 
     def test_one_row_per_field_per_capture_not_per_entity(self):
         cfg = {"entity_column": "entity", "identity_fields": ["owner"], "min_presence_days": 1}

@@ -96,6 +96,8 @@ MCP server 走 stdio。在宿主（Claude Desktop、Codex 等）的配置里加�
 `args` 换成 `["-m", "indiebiz_evidence.cli", "mcp", "--db", "..."]`。
 配置后重启宿主，先调 `list_sources` 确认连上了。
 
+MCP 返回的 `raw_ref` 是对应采集文件的引用编号，文本中的 URL 会隐藏。需要核对原始文件时，按来源和采集日期在本机查看，或用本机 `crosscheck` 命令查看原始出处。
+
 ## 十五个 MCP 工具
 
 | tool | 用途 |
@@ -105,7 +107,7 @@ MCP server 走 stdio。在宿主（Claude Desktop、Codex 等）的配置里加�
 | `search_records` | 任意字段筛选 + 排序 + 分页；**缺席字段永不满足比较** |
 | `get_source_entity` | 单实体某日全字段快照 |
 | `query_series` | 单字段全时序（缺口 = 缺席，不是 0） |
-| `get_source_evidence_chain` | 单实体全字段跨日审计链 + 逐日 `raw_ref` |
+| `get_source_evidence_chain` | 单实体全字段跨日审计链 + 逐日 `raw_ref` 引用编号 |
 | `diff_snapshots` | 两次抓取之间变了什么（新增/消失/逐字段），**与领域无关** |
 | `list_entities` | 源内实体清单（首末次出现 / 出现的抓取日数 / 事实数） |
 | `find_duplicate_entities` | 源内合并候选（`Acme Widget` vs `acme_widget`），带逐对证据 |
@@ -132,7 +134,7 @@ MCP server 走 stdio。在宿主（Claude Desktop、Codex 等）的配置里加�
 
 ## 成熟度
 
-**0.x 是实验性版本**。已用：合成回归矩阵（14 场景）、173 项测试、文档真值检查。
+**0.x 是实验性版本**。已用：合成回归矩阵（14 场景）、174 项测试、文档真值检查。
 **未用真实语料验证精度**——这条缺口写在 [COMPLIANCE.md](COMPLIANCE.md) §六，不藏着。
 适用场景：本地、受信任输入、单机使用。不承诺处理任意规模或敌意输入。
 
@@ -141,7 +143,7 @@ MCP server 走 stdio。在宿主（Claude Desktop、Codex 等）的配置里加�
 ```bash
 pip install indiebiz-evidence          # 从 PyPI 安装（推荐），装出 indiebiz-evidence 命令
 # 或从源码安装（在仓库克隆目录内）：pip install .
-python scripts/run_release_gate.py     # 五道门禁单一入口（173 tests，跳过=失败；CI 同款）
+python scripts/run_release_gate.py     # 五道门禁单一入口（174 tests，跳过=失败；CI 同款）
 ```
 
 ## 数据与隐私

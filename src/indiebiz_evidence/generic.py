@@ -735,31 +735,28 @@ def detect_generic(con, source, config=None, verbose=True):
     # evidence the parser stored a RENDERED cell. That poisons identity comparison --
     # the same person reads as two ('X' and '[X](url)') -- which is how 87% markdown
     # in one column produced false identity-change alerts in a real capture. Reported
-    # at the SOURCE level (one line per field per capture, with samples) so it stays
+    # at the SOURCE level (one line per field per capture) so it stays
     # one actionable line instead of hundreds of per-entity rows.
     markup_fields = set(text_fields) | ident
     if markup_fields:
         by_df = {}
-        for d, ent, fld, num, text in facts:
+        for d, _ent, fld, _num, text in facts:
             if fld not in markup_fields or text is None or not text.strip():
                 continue
-            by_df.setdefault((d, fld), []).append((ent, text))
+            by_df.setdefault((d, fld), []).append(text)
         for (d, fld) in sorted(by_df):
             vals = by_df[(d, fld)]
-            hits = [(e, t) for e, t in vals
-                    if _MD_LINK.search(t) or _HTML_TAG.search(t) or _HTML_ENTITY.search(t)]
+            hits = sum(1 for text in vals
+                       if _MD_LINK.search(text) or _HTML_TAG.search(text) or _HTML_ENTITY.search(text))
             if not hits:
                 continue
-            pct = 100.0 * len(hits) / len(vals)
-            sample = "; ".join(repr(t[:60]) for _e, t in hits[:2])
+            pct = 100.0 * hits / len(vals)
             # severity follows volume, not ratio: one odd value is a lead, a batch of
             # them is a parser that copies rendered cells
             flag(d, SCHEMA_ENTITY, "text_contains_markup:" + fld,
-                 "warn" if len(hits) >= 3 else "info",
-                 "%d of %d values in %s contain raw markup (%.0f%%), e.g. %s -- the parser "
-                 "is storing a rendered cell, not the value. Strip Markdown/HTML at the "
-                 "source: the same entity can otherwise read as two different ones "
-                 "('X' vs '[X](url)')" % (len(hits), len(vals), fld, pct, sample))
+                 "warn" if hits >= 3 else "info",
+                 "%d of %d values in %s contain raw markup (%.0f%%). "
+                 "Check the source parser for rendered cells." % (hits, len(vals), fld, pct))
 
     # field_disappeared: the GSC lesson, generalized
     for ent, dates in entity_dates.items():
@@ -944,7 +941,8 @@ def entity_snapshot(con, source, entity, date=None):
         return None
     for fld, num, text, ref in rows:
         fields[fld] = {"num": num, "text": text}
-    anoms = [{"observed_date": a[0], "kind": a[1], "severity": a[2], "detail": a[3]}
+    anoms = [{"observed_date": a[0], "kind": a[1], "severity": a[2],
+              "detail": store.anomaly_detail(a[1], a[3])}
              for a in con.execute(
                  "SELECT observed_date, kind, severity, detail FROM anomalies"
                  " WHERE slug=? AND observed_date<=? ORDER BY observed_date DESC, kind LIMIT 30",

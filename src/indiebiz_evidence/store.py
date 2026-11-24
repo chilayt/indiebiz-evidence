@@ -6,9 +6,25 @@ rebuildable view. Deleting it and re-running the import must reproduce it.
 from __future__ import annotations
 
 import os
+import re
 import sqlite3
 
 _SCHEMA = os.path.join(os.path.dirname(__file__), "schema.sql")
+_LEGACY_MARKUP_SAMPLE = re.compile(r"(contain raw markup \(\d+%\)), e\.g\. .*", re.DOTALL)
+_URL = re.compile(r"""\b(?:https?|ftps?|sftp|ssh|smb|wss?|file)://[^\s<>"']+""", re.IGNORECASE)
+
+
+def hide_urls(text: str) -> str:
+    return _URL.sub("[URL hidden]", text)
+
+
+def anomaly_detail(kind: str, detail: str | None) -> str | None:
+    """Hide URLs and omit raw markup samples previously stored by 0.9.0."""
+    if detail is None:
+        return None
+    if kind.startswith("text_contains_markup:") and detail:
+        detail = _LEGACY_MARKUP_SAMPLE.sub(r"\1. Check the source parser for rendered cells.", detail)
+    return hide_urls(detail)
 
 
 def connect(db_path: str) -> sqlite3.Connection:

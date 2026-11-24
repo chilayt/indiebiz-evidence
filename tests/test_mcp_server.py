@@ -6,6 +6,7 @@ synthetic demo, so a clean clone runs every test and skips none.
 """
 import json
 import os
+from pathlib import Path
 import subprocess
 import sys
 import tempfile
@@ -14,7 +15,7 @@ import unittest
 PROJ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(PROJ, "src"))
 
-from indiebiz_evidence import demo  # noqa: E402
+from indiebiz_evidence import demo, generic, store  # noqa: E402
 
 INIT = {"jsonrpc": "2.0", "id": 1, "method": "initialize",
         "params": {"protocolVersion": "2025-06-18", "capabilities": {},
@@ -119,6 +120,74 @@ class TestMcpProtocol(unittest.TestCase):
     def test_unknown_method_is_jsonrpc_error(self):
         self.assertIn("error", self.responses[8])
         self.assertEqual(self.responses[8]["error"]["code"], -32601)
+
+    def test_legacy_samples_and_local_paths_stay_out_of_mcp_and_audit(self):
+        with tempfile.TemporaryDirectory(prefix="ibe-private-") as folder:
+            root = Path(folder)
+            db = str(root / "data.db")
+            captures = root / "private-capture-directory"
+            captures.mkdir()
+            raw_file = captures / "2099-01-01.csv"
+            cell = "[Ann](https://capture.internal/profile?signature=fixture-only)"
+            raw_file.write_text(f"entity,owner,price\na,{cell},12\n", encoding="utf-8")
+            con = store.connect(db)
+            store.init_db(con)
+            generic.import_path(con, "test-source", str(captures),
+                                config={"entity_column": "entity"}, verbose=False)
+            legacy = f"1 of 1 values in owner contain raw markup (100%), e.g. {cell} -- check parser"
+            store.put_anomaly(con, "2099-01-01", "test-source:__schema__",
+                              "text_contains_markup:owner", "info", legacy)
+            con.commit()
+            con.close()
+
+            source = {"source": "test-source"}
+            entity = {**source, "entity": "a"}
+            calls = [
+                req(2, "tools/call", {"name": "list_source_anomalies", "arguments": source}),
+                req(3, "tools/call", {"name": "get_source_evidence_chain", "arguments": entity}),
+                req(4, "tools/call", {"name": "search_records", "arguments": source}),
+                req(5, "tools/call", {"name": "query_series", "arguments": {**entity, "field": "price"}}),
+                req(6, "tools/call", {"name": "cross_check", "arguments": {"entity": "a"}}),
+            ]
+            responses, rc, err = run_session(db, [INIT, INITIALIZED, *calls])
+            self.assertEqual(rc, 0, err)
+            payloads = []
+            for i in range(2, 7):
+                result = responses[i]["result"]
+                out = result["content"][0]["text"]
+                self.assertFalse(result["isError"], out)
+                self.assertNotIn("capture.internal", out)
+                self.assertNotIn("fixture-only", out)
+                self.assertNotIn("private-capture-directory", out)
+                payloads.append(json.loads(out))
+            anomalies, chain, search, series, comparison = payloads
+            detail = anomalies["anomalies"][0]["detail"]
+            self.assertIn("1 of 1 values", detail)
+            self.assertNotIn("e.g.", detail)
+            raw_ref = chain["chain"][0]["raw_ref"]
+            self.assertRegex(raw_ref, r"^capture:[a-f0-9]{24}$")
+            self.assertEqual(search["records"][0]["raw_ref"], raw_ref)
+            self.assertEqual(series["series"][0]["raw_ref"], raw_ref)
+            observation = comparison["fields"]["owner"]["values"][0]["observations"][0]
+            self.assertIn("[URL hidden]", observation["text"])
+            self.assertEqual(observation["raw_ref"], raw_ref)
+            self.assertEqual(series["series"][0]["num"], 12)
+
+            audit = subprocess.run(
+                [sys.executable, os.path.join(PROJ, "scripts", "audit_source.py"),
+                 "--db", db, "--source", "test-source"],
+                capture_output=True, text=True, encoding="utf-8", timeout=30, check=True,
+            )
+            self.assertIn("1 of 1 values", audit.stdout)
+            self.assertNotIn("capture.internal", audit.stdout)
+            self.assertNotIn("fixture-only", audit.stdout)
+
+            con = store.connect(db)
+            try:
+                self.assertEqual(generic.entity_snapshot(con, "test-source", "a")["raw_ref"],
+                                 str(raw_file))
+            finally:
+                con.close()
 
 
 if __name__ == "__main__":

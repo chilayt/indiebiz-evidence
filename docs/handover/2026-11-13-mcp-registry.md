@@ -4,7 +4,7 @@
 |---|---|
 | 里程碑 | **indiebiz-evidence 已进官方 MCP Registry**：io.github.chilayt/indiebiz-evidence@0.6.1 |
 | 验证 | registry.modelcontextprotocol.io/v0/servers?search=indiebiz 可查到，pypi/stdio/uvx |
-| 工具 | mcp-publisher（I:\tools\mcp-publisher\mcp-publisher.exe），GitHub 设备码授权（负责人点 Authorize）|
+| 工具 | mcp-publisher，使用 GitHub 设备码由负责人授权 |
 
 ## 踩坑与处理
 - Registry description 限 **100 字符**：原描述超长，已缩到 100。

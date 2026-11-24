@@ -10,7 +10,9 @@ the engine has no runtime dependencies to install or audit.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import math
 import os
 import sys
 
@@ -33,7 +35,8 @@ def _instructions():
         "arriving is a capture problem until proven otherwise; (3) never diff across "
         "an identity boundary; (4) a change seen across a capture gap spans the whole "
         "gap, not one interval; (5) duplicate/resolution output is CANDIDATES, not "
-        "verdicts -- never merge without checking the field values."
+        "verdicts -- never merge without checking the field values. MCP raw_ref values "
+        "are capture IDs and URL text is hidden. Use the source and capture date for local review."
     )
 
 
@@ -108,7 +111,7 @@ TOOL_SCHEMAS = [
     {
         "name": "get_source_evidence_chain",
         "title": "Audited chain for one entity",
-        "description": "All fields across every capture date, with raw_ref per date and "
+        "description": "All fields across every capture date, with a raw_ref capture ID per date and "
                        "an explicit field_disappearances list.",
         "inputSchema": {
             "type": "object",
@@ -173,7 +176,7 @@ TOOL_SCHEMAS = [
         "name": "cross_check",
         "title": "Cross-check one claim across every source that reports it",
         "description": "Put each source's reported value for an entity side by side, with "
-                       "provenance (source, capture date, original text, raw_ref). Per field "
+                       "provenance (source, capture date, text, raw_ref capture ID). Per field "
                        "labels it agrees (same value AND text across distinct sources), "
                        "numbers_match (parsed numbers equal but text differs -- caliber NOT "
                        "confirmed, not corroboration), differs, or single_source (a lone "
@@ -519,21 +522,26 @@ def _send(obj):
     sys.stdout.flush()
 
 
-def _finite(value):
-    """Replace non-finite floats so the payload is always valid JSON.
-
-    Parsing refuses inf/NaN now, but a database written by an older version can
-    still hold them, and one Infinity would make the client fail to parse the
-    entire response.
-    """
+def _mcp_value(value):
+    """Make older data safe to serialize and keep local evidence paths out of MCP."""
     if isinstance(value, float):
-        if value != value or value in (float("inf"), float("-inf")):
-            return None
-        return value
+        return value if math.isfinite(value) else None
+    if isinstance(value, str):
+        return store.hide_urls(value)
     if isinstance(value, dict):
-        return {k: _finite(v) for k, v in value.items()}
+        result = {}
+        for key, item in value.items():
+            if key == "raw_ref" and isinstance(item, str) and item:
+                digest = hashlib.sha256(item.encode("utf-8")).hexdigest()[:24]
+                result[key] = "capture:" + digest
+                continue
+            if key == "detail" and isinstance(item, str) and isinstance(value.get("kind"), str):
+                result[key] = store.anomaly_detail(value["kind"], item)
+                continue
+            result[key] = _mcp_value(item)
+        return result
     if isinstance(value, (list, tuple)):
-        return [_finite(v) for v in value]
+        return [_mcp_value(v) for v in value]
     return value
 
 
@@ -542,18 +550,20 @@ def _call_tool(con, params):
     args = params.get("arguments") or {}
     fn = TOOL_FUNCS.get(name)
     if fn is None:
-        return {"content": [{"type": "text", "text": "Unknown tool: %s" % name}], "isError": True}
+        return {"content": [{"type": "text", "text": _mcp_value("Unknown tool: %s" % name)}],
+                "isError": True}
     try:
         payload = fn(con, args)
-        text = payload if isinstance(payload, str) else json.dumps(
-            _finite(payload), ensure_ascii=False, indent=1, default=str)
+        safe = _mcp_value(payload)
+        text = safe if isinstance(safe, str) else json.dumps(
+            safe, ensure_ascii=False, indent=1, default=str)
         # A payload that carries "error" is a failed call, not a success with a
         # message: hosts branch on isError, and returning false there let an agent
         # treat "source is required" as data.
         is_err = isinstance(payload, dict) and "error" in payload
         return {"content": [{"type": "text", "text": text}], "isError": bool(is_err)}
     except Exception as e:
-        return {"content": [{"type": "text", "text": "Tool error: %s: %s" % (type(e).__name__, e)}],
+        return {"content": [{"type": "text", "text": "Tool error: %s" % type(e).__name__}],
                 "isError": True}
 
 
@@ -587,12 +597,12 @@ def _handle(con, msg):
             result = {"prompts": []}
         else:
             return {"jsonrpc": "2.0", "id": mid,
-                    "error": {"code": -32601, "message": "Method not found: %s" % method}}
+                    "error": {"code": -32601, "message": _mcp_value("Method not found: %s" % method)}}
         return {"jsonrpc": "2.0", "id": mid, "result": result}
     except Exception as e:
         return {"jsonrpc": "2.0", "id": mid,
                 "error": {"code": -32603,
-                          "message": "Internal error: %s: %s" % (type(e).__name__, e)}}
+                          "message": "Internal error: %s" % type(e).__name__}}
 
 
 def serve(db_path: str):
@@ -600,8 +610,8 @@ def serve(db_path: str):
     # registry has no data yet, and "server failed to start" is a dead end. Create
     # an empty store and serve; list_sources tells the user how to import. (P0-1)
     if not os.path.exists(db_path):
-        sys.stderr.write("evidence db not found: %s -- creating an empty store; "
-                         "import a source to populate it\n" % db_path)
+        sys.stderr.write("evidence db not found -- creating an empty store; "
+                         "import a source to populate it\n")
     _reconfigure_stdio()
     con = store.connect(db_path)
     store.init_db(con)
@@ -704,7 +714,7 @@ def selftest(db_path: str):
     print("anomalies stored in this database (%d shown):" % len(rows))
     if not rows:
         print("  (none)")
-    for r in rows:
+    for r in _mcp_value(rows):
         print("  %s  %-28s %-24s %s" % (r["observed_date"], r["slug"], r["kind"], r["severity"]))
         if r["detail"]:
             print("      %s" % r["detail"])
